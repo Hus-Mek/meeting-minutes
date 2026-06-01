@@ -32,17 +32,29 @@ python -m meeting_minutes.cli \
   --transcript meeting.json \
   --notes notes.md \
   --out minutes.md \
-  --title "Weekly Sync" --date 2026-06-01
+  --title "Weekly Sync"        # --date defaults to today
 ```
 
-Optional: `--include-actions` appends a *Decisions & Action Items* section;
-`--backend {groq,claude,ollama}` and `--model <id>` swap the LLM.
+A *Decisions & Action Items* section is included by default — pass `--no-actions`
+to drop it. `--backend {groq,claude,ollama}` and `--model <id>` swap the LLM
+(claude/ollama are stubs for now); `--debug` prints full tracebacks.
+
+Routing is **model-aware**: it sizes the full prompt against the model's real
+context window (128k for Llama 3.3 70B, minus reserved output) and automatically
+falls back to a bounded map-reduce for very long meetings.
 
 ### Transcript format
 
 A JSON list of diarized segments. Default keys are `speaker`, `start`, `end`,
-`text` (seconds). If your diarizer uses other names, adapt `FieldMap` in
-`meeting_minutes/transcript.py` — the only place field names live.
+`text` (seconds). If your diarizer uses other names, pass them on the CLI — no
+need to edit source:
+
+```bash
+--speaker-key spk --start-key begin --end-key stop --text-key content
+```
+
+Anonymous labels can be renamed: `--speaker-map "SPEAKER_00=Alice,SPEAKER_01=Bob"`
+(and the model is told never to invent names for unmapped `SPEAKER_NN` labels).
 
 ```json
 [
