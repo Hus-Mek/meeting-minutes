@@ -1,0 +1,9 @@
+[
+  {"speaker": "Alice", "start": 0.0, "end": 6.2, "text": "Morning everyone. First item is the Q3 budget — we're about 12% over on infra."},
+  {"speaker": "Bob", "start": 6.2, "end": 14.8, "text": "The overage is mostly the new GPU instances. I think we can cut it by moving the batch jobs to spot pricing."},
+  {"speaker": "Alice", "start": 14.8, "end": 20.0, "text": "Agreed. Bob, can you own that and report back next week?"},
+  {"speaker": "Bob", "start": 20.0, "end": 22.5, "text": "Yes, I'll have numbers by Friday."},
+  {"speaker": "Carol", "start": 22.5, "end": 34.0, "text": "Switching topics — the onboarding redesign is blocked on legal review of the new terms. I pinged them twice."},
+  {"speaker": "Alice", "start": 34.0, "end": 41.0, "text": "Let's escalate to Dana if we don't hear back by Wednesday. Carol, keep the thread warm."},
+  {"speaker": "Carol", "start": 41.0, "end": 45.5, "text": "Will do. Otherwise the redesign is ready to ship."}
+]
