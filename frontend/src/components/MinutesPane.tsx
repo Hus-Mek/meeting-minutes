@@ -1,9 +1,15 @@
-import { useEffect, useState } from "react"
+import { useRef, useEffect, useState, type FormEvent } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import TurndownService from "turndown"
+import { gfm } from "turndown-plugin-gfm"
 import { Check, Copy, Download, Eye, FileText, Pencil, Printer } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
+
+// Convert the edited document HTML back to Markdown so Copy/Download stay clean .md.
+const turndown = new TurndownService({ headingStyle: "atx", bulletListMarker: "-" })
+turndown.use(gfm)
 
 export type PaneState = "input" | "loading" | "result"
 
@@ -93,8 +99,25 @@ interface ResultDocProps2 extends ResultDocProps {
 }
 
 function ResultDoc({ minutes, title, onChange }: ResultDocProps2) {
+  const articleRef = useRef<HTMLElement>(null)
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(false)
+  const [editHtml, setEditHtml] = useState("")
+
+  // Snapshot the rendered HTML when entering edit, so the contentEditable surface
+  // looks identical to the preview. Edits convert back to Markdown via turndown.
+  function toggleEdit() {
+    if (!editing) {
+      setEditHtml(articleRef.current?.innerHTML ?? "")
+      setEditing(true)
+    } else {
+      setEditing(false)
+    }
+  }
+
+  function handleInput(e: FormEvent<HTMLElement>) {
+    onChange?.(turndown.turndown(e.currentTarget.innerHTML))
+  }
 
   async function copy() {
     await navigator.clipboard.writeText(minutes)
@@ -112,23 +135,17 @@ function ResultDoc({ minutes, title, onChange }: ResultDocProps2) {
     URL.revokeObjectURL(url)
   }
 
-  function print() {
-    // Print renders the .print-area article, which only exists in preview mode.
-    setEditing(false)
-    setTimeout(() => window.print(), 60)
-  }
-
   return (
     <div className="flex h-full flex-col">
       <div className="no-print sticky top-0 z-10 flex items-center justify-between gap-1.5 border-b border-line bg-paper/85 px-4 py-2.5 backdrop-blur">
         <Button
           variant={editing ? "secondary" : "ghost"}
           size="sm"
-          onClick={() => setEditing((e) => !e)}
+          onClick={toggleEdit}
           disabled={!onChange}
         >
           {editing ? <Eye className="size-4" /> : <Pencil className="size-4" />}
-          {editing ? "Preview" : "Edit"}
+          {editing ? "Done" : "Edit"}
         </Button>
         <div className="flex items-center gap-1.5">
           <Button variant="ghost" size="sm" onClick={copy}>
@@ -139,30 +156,34 @@ function ResultDoc({ minutes, title, onChange }: ResultDocProps2) {
             <Download className="size-4" />
             Download
           </Button>
-          <Button variant="ghost" size="sm" onClick={print}>
+          <Button variant="ghost" size="sm" onClick={() => window.print()}>
             <Printer className="size-4" />
             Print
           </Button>
         </div>
       </div>
-      {editing ? (
-        <div className="flex-1 overflow-hidden px-4 py-4 sm:px-6">
-          <textarea
+      {editing && (
+        <p className="no-print bg-[var(--oxide-soft)] px-6 py-1.5 text-center text-xs text-muted-foreground">
+          Click anywhere in the document to edit. Changes feed Copy / Download / Print.
+        </p>
+      )}
+      <div className="overflow-y-auto px-8 py-10 sm:px-12">
+        {editing ? (
+          <article
             dir="auto"
-            value={minutes}
-            onChange={(e) => onChange?.(e.target.value)}
-            spellCheck={false}
-            aria-label="Edit minutes markdown"
-            className="h-full w-full resize-none rounded-md border border-line bg-card p-5 font-mono text-sm leading-relaxed text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            contentEditable
+            suppressContentEditableWarning
+            onInput={handleInput}
+            aria-label="Edit minutes"
+            className="print-area minutes-doc mx-auto rounded-md p-1 outline-none ring-1 ring-[var(--oxide)]/25 focus-within:ring-2 focus-within:ring-ring"
+            dangerouslySetInnerHTML={{ __html: editHtml }}
           />
-        </div>
-      ) : (
-        <div className="overflow-y-auto px-8 py-10 sm:px-12">
-          <article dir="auto" className="print-area minutes-doc mx-auto">
+        ) : (
+          <article ref={articleRef} dir="auto" className="print-area minutes-doc mx-auto">
             <Markdown remarkPlugins={[remarkGfm]}>{minutes}</Markdown>
           </article>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }

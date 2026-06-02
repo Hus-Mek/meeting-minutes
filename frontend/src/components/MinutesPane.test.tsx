@@ -35,13 +35,19 @@ describe("MinutesPane", () => {
     expect(screen.getByRole("button", { name: /print/i })).toBeInTheDocument()
   })
 
-  it("toggles to an editable textarea and propagates edits", () => {
+  it("edits inline in the rendered document and exports markdown", () => {
     const onChange = vi.fn()
     render(<MinutesPane state="result" minutes={SAMPLE} title="x" onChange={onChange} />)
     fireEvent.click(screen.getByRole("button", { name: /edit/i }))
-    const textarea = screen.getByLabelText(/edit minutes markdown/i)
-    expect(textarea).toHaveValue(SAMPLE)
-    fireEvent.change(textarea, { target: { value: SAMPLE + "\n- more" } })
-    expect(onChange).toHaveBeenCalledWith(SAMPLE + "\n- more")
+
+    const doc = screen.getByLabelText(/edit minutes/i)
+    expect(doc).toHaveAttribute("contenteditable", "true")
+
+    doc.innerHTML = "<h2>عنوان جديد</h2><p>نص</p>"
+    fireEvent.input(doc)
+
+    expect(onChange).toHaveBeenCalled()
+    const lastArg = onChange.mock.calls.at(-1)?.[0] as string
+    expect(lastArg).toContain("عنوان جديد")
   })
 })

@@ -229,15 +229,17 @@ class TestSpaFallback:
 class TestRealBackendErrors:
     """Exercise the real exception->HTTP mapping without the fake override."""
 
-    def test_claude_stub_is_501(self):
-        # No override: real get_client → claude stub raises NotImplementedError → 501.
+    def test_openrouter_without_key_is_500(self, monkeypatch):
+        # No override: real get_client → OpenRouterClient raises RuntimeError (no key) → 500.
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
         with TestClient(app) as c:
             resp = c.post(
                 "/api/minutes",
                 files={"transcript": _transcript_file()},
-                data={"backend": "claude"},
+                data={"backend": "openrouter"},
             )
-        assert resp.status_code == 501
+        assert resp.status_code == 500
+        assert "OPENROUTER_API_KEY" in resp.json()["error"]
 
     def test_unknown_backend_is_400(self):
         with TestClient(app) as c:

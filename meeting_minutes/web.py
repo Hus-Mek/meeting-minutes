@@ -157,7 +157,7 @@ async def api_minutes(
         raise HTTPException(status_code=502, detail=str(exc))
     except RuntimeError as exc:
         msg = str(exc)
-        status = 500 if "GROQ_API_KEY" in msg else 502
+        status = 500 if "API_KEY" in msg else 502
         raise HTTPException(status_code=status, detail=msg)
     return {"minutes": minutes, "meta": {"backend": backend, "segments": len(segments)}}
 

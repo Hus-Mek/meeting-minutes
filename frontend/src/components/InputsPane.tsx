@@ -9,6 +9,13 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 interface InputsPaneProps {
   file: File | null
@@ -155,6 +162,21 @@ export function InputsPane({
             Advanced
           </AccordionTrigger>
           <AccordionContent className="flex flex-col gap-4 pt-1">
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-xs text-muted-foreground">Model backend</Label>
+              <Select value={options.backend} onValueChange={(v) => onChange({ backend: v })}>
+                <SelectTrigger className="h-9 bg-card text-sm">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="openrouter">OpenRouter — Sonnet 4.6 (best Arabic)</SelectItem>
+                  <SelectItem value="groq">Groq — Llama 3.3 70B (fast, free)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                OpenRouter needs OPENROUTER_API_KEY on the server.
+              </p>
+            </div>
             <p className="text-xs text-muted-foreground">JSON transcripts only — field mapping:</p>
             <div className="grid grid-cols-2 gap-3">
               <MonoField label="Speaker key" value={options.speakerKey} onChange={(v) => onChange({ speakerKey: v })} />

@@ -23,7 +23,7 @@ const DEFAULT_OPTIONS: MinutesOptions = {
   location: "",
   attendees: "",
   recap: "",
-  backend: "groq",
+  backend: "openrouter",
   model: "",
   speakerKey: "speaker",
   startKey: "start",

@@ -10,9 +10,12 @@ import types
 
 import pytest
 
+import httpx
+
 from meeting_minutes.llm import (
     DEFAULT_GROQ_MODEL,
     GroqClient,
+    OpenRouterClient,
     OpenRouterGuardError,
     TruncatedResponseError,
     assert_no_openrouter,
@@ -90,7 +93,7 @@ class TestBudgeting:
 
     def test_default_model_per_backend(self):
         assert default_model_for("groq") == DEFAULT_GROQ_MODEL
-        assert default_model_for("claude").startswith("claude")
+        assert default_model_for("openrouter").startswith("anthropic/")
         assert default_model_for("unknown") == DEFAULT_GROQ_MODEL
 
 
@@ -99,13 +102,14 @@ class TestGetClient:
         with pytest.raises(ValueError, match="unknown backend"):
             get_client("gpt5")
 
-    def test_claude_backend_is_stubbed(self):
-        with pytest.raises(NotImplementedError, match="Claude backend"):
-            get_client("claude")
-
     def test_ollama_backend_is_stubbed(self):
         with pytest.raises(NotImplementedError, match="Ollama backend"):
             get_client("ollama")
+
+    def test_openrouter_requires_key(self, monkeypatch):
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY"):
+            get_client("openrouter")
 
     def test_guard_runs_before_construction(self, monkeypatch):
         monkeypatch.setenv("GROQ_BASE_URL", "https://openrouter.ai/x")
@@ -147,3 +151,43 @@ class TestGroqClient:
         _install_fake_groq(monkeypatch, captured)
         monkeypatch.setenv("GROQ_API_KEY", "k")
         assert isinstance(get_client("groq"), GroqClient)
+
+
+class _FakeResp:
+    def __init__(self, content, finish_reason="stop", status=200):
+        self.status_code = status
+        self._content = content
+        self._finish = finish_reason
+
+    def raise_for_status(self):
+        pass
+
+    def json(self):
+        return {"choices": [{"finish_reason": self._finish, "message": {"content": self._content}}]}
+
+
+class TestOpenRouterClient:
+    def test_requires_api_key(self, monkeypatch):
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+        with pytest.raises(RuntimeError, match="OPENROUTER_API_KEY"):
+            OpenRouterClient()
+
+    def test_generate_posts_and_returns_content(self, monkeypatch):
+        captured = {}
+
+        def fake_post(url, json=None, headers=None, timeout=None):
+            captured.update(url=url, json=json, headers=headers)
+            return _FakeResp("## محضر اجتماع")
+
+        monkeypatch.setattr(httpx, "post", fake_post)
+        client = OpenRouterClient(api_key="or-key")
+        out = client.generate("sys", "user", model="anthropic/claude-sonnet-4.6")
+        assert out == "## محضر اجتماع"
+        assert captured["url"].endswith("/chat/completions")
+        assert captured["json"]["model"] == "anthropic/claude-sonnet-4.6"
+        assert captured["headers"]["Authorization"] == "Bearer or-key"
+
+    def test_truncation_raises(self, monkeypatch):
+        monkeypatch.setattr(httpx, "post", lambda *a, **k: _FakeResp("x", finish_reason="length"))
+        with pytest.raises(TruncatedResponseError):
+            OpenRouterClient(api_key="k").generate("s", "u")

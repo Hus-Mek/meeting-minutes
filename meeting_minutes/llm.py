@@ -17,12 +17,17 @@ from typing import Callable, Protocol
 
 DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
 
+# Default Sonnet model id on OpenRouter (overridable via --model / the GUI).
+DEFAULT_OPENROUTER_MODEL = "anthropic/claude-sonnet-4.6"
+
 # Per-model context windows (input + output tokens). Used to size single-pass vs
 # map-reduce. Conservative fallback for unknown models.
 MODEL_CONTEXT_WINDOWS = {
     "llama-3.3-70b-versatile": 128_000,
     "llama-3.1-70b-versatile": 128_000,
     "llama-3.1-8b-instant": 128_000,
+    "anthropic/claude-sonnet-4.6": 200_000,
+    "anthropic/claude-sonnet-4.5": 200_000,
 }
 DEFAULT_CONTEXT_WINDOW = 128_000
 
@@ -37,7 +42,7 @@ DEFAULT_MAX_RETRIES = 4
 # Per-backend default model — resolved when --model is omitted.
 DEFAULT_MODELS = {
     "groq": DEFAULT_GROQ_MODEL,
-    "claude": "claude-haiku-4-5",
+    "openrouter": DEFAULT_OPENROUTER_MODEL,
     "ollama": "llama3.1",
 }
 
@@ -143,12 +148,71 @@ class GroqClient:
         return choice.message.content or ""
 
 
-def _claude_stub(*_args, **_kwargs):
-    raise NotImplementedError(
-        "Claude backend not implemented yet. It would use the `anthropic` SDK with "
-        "prompt caching once Anthropic API access is available (Enterprise seat does "
-        "not grant it automatically). Use --backend groq for now."
-    )
+_OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+_RETRYABLE_STATUS = {408, 409, 429, 500, 502, 503, 504}
+
+
+class OpenRouterClient:
+    """Sonnet (and other) models via OpenRouter's OpenAI-compatible REST API.
+
+    DELIBERATE, user-authorized exception to the usual OpenRouter ban for this app:
+    it uses a dedicated ``OPENROUTER_API_KEY`` and is selected only when the user
+    explicitly chooses ``--backend openrouter``. The env-var OpenRouter guardrail
+    still protects the Groq path from accidental proxy/base-url tunnelling.
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        *,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
+    ) -> None:
+        import httpx
+
+        key = api_key or os.environ.get("OPENROUTER_API_KEY")
+        if not key:
+            raise RuntimeError("OPENROUTER_API_KEY is not set")
+        self._key = key
+        self._timeout = timeout
+        self._max_retries = max_retries
+        self._max_output_tokens = max_output_tokens
+        self._httpx = httpx
+
+    def generate(self, system: str, user: str, *, model: str = DEFAULT_OPENROUTER_MODEL) -> str:
+        payload = {
+            "model": model,
+            "temperature": 0.2,
+            "max_tokens": self._max_output_tokens,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        headers = {"Authorization": f"Bearer {self._key}", "Content-Type": "application/json"}
+        last_exc: Exception | None = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                resp = self._httpx.post(
+                    _OPENROUTER_URL, json=payload, headers=headers, timeout=self._timeout
+                )
+                if resp.status_code in _RETRYABLE_STATUS and attempt < self._max_retries:
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                choice = data["choices"][0]
+                if choice.get("finish_reason") == "length":
+                    raise TruncatedResponseError(
+                        f"OpenRouter response hit the {self._max_output_tokens}-token cap "
+                        "and was truncated; raise the cap or shorten the input."
+                    )
+                return choice["message"]["content"] or ""
+            except self._httpx.HTTPError as exc:
+                last_exc = exc
+                if attempt >= self._max_retries:
+                    raise RuntimeError(f"OpenRouter request failed: {exc}") from exc
+        raise RuntimeError(f"OpenRouter request failed: {last_exc}")
 
 
 def _ollama_stub(*_args, **_kwargs):
@@ -158,10 +222,10 @@ def _ollama_stub(*_args, **_kwargs):
     )
 
 
-# Backend registry: name -> factory(). Only Groq is live.
+# Backend registry: name -> factory().
 _BACKENDS: dict[str, Callable[[], LlmClient]] = {
     "groq": lambda: GroqClient(),
-    "claude": _claude_stub,
+    "openrouter": lambda: OpenRouterClient(),
     "ollama": _ollama_stub,
 }
 

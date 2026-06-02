@@ -45,12 +45,24 @@ class TestSystemPrompt:
 
     def test_responsibility_is_entity_not_person(self):
         result = build_system_prompt(title="t", date="d")
-        assert "الجهة أو الشركة المسؤولة" in result
+        assert "الجهة/الشركة المسؤولة" in result
         assert "وليس اسم شخص" in result
+
+    def test_outcomes_are_consolidated(self):
+        result = build_system_prompt(title="t", date="d")
+        assert "اجمع المهام والتوصيات المتقاربة" in result
 
     def test_demands_detailed_discussion_points(self):
         result = build_system_prompt(title="t", date="d")
         assert "تفصيلية وشاملة" in result
+
+    def test_forbids_placeholder_echo(self):
+        result = build_system_prompt(title="t", date="d")
+        assert "placeholder" in result
+
+    def test_requires_gender_agreement(self):
+        result = build_system_prompt(title="t", date="d")
+        assert "التطابق الصرفي الصحيح للجنس" in result
 
     def test_recap_is_described_as_unreliable_hint(self):
         result = build_system_prompt(title="t", date="d")
