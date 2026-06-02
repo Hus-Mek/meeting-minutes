@@ -219,6 +219,66 @@
     background: color-mix(in oklab, var(--muted) 45%, transparent);
 }
 
+/* Default template (formal محضر اجتماع layout, mirrors the .docx). */
+.tmpl-default .mm-hdr {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0 0 1.5rem;
+}
+.tmpl-default .mm-hdr th,
+.tmpl-default .mm-hdr td {
+    border: 1px solid var(--line);
+    padding: 0.5rem 0.75rem;
+    text-align: center;
+    font-family: var(--font-sans);
+    font-size: 0.95rem;
+}
+.tmpl-default .mm-title {
+    font-family: "Amiri", var(--font-heading);
+    font-weight: 600;
+    font-size: 1.4rem;
+    background: var(--oxide-soft);
+    padding: 0.85rem;
+}
+.tmpl-default .mm-num {
+    width: 2.5rem;
+    text-align: center;
+    color: var(--muted-foreground);
+}
+.tmpl-default .mm-discussion td {
+    line-height: 1.95;
+}
+.tmpl-default .mm-owner {
+    font-weight: 500;
+}
+.mm-edit {
+    width: 100%;
+    background: transparent;
+    border: 0;
+    outline: 0;
+    font: inherit;
+    color: inherit;
+    padding: 0.1rem 0.2rem;
+    border-radius: 4px;
+}
+.mm-edit:focus {
+    background: var(--paper);
+    box-shadow: 0 0 0 2px var(--ring) inset;
+}
+.mm-inline {
+    width: auto;
+    min-width: 10rem;
+    display: inline-block;
+    text-align: center;
+}
+.mm-area {
+    display: block;
+    width: 100%;
+    resize: vertical;
+    line-height: 1.8;
+    margin: 0 0 0.5rem;
+}
+
 @media (prefers-reduced-motion: reduce) {
     *,
     *::before,

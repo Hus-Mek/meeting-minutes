@@ -43,14 +43,14 @@ class TestSystemPrompt:
         assert "Unidentified Speaker" in result
         assert "قائمة الحضور" in result
 
-    def test_responsibility_is_entity_not_person(self):
+    def test_owner_is_assignee_name_for_app_to_map(self):
         result = build_system_prompt(title="t", date="d")
-        assert "الجهة/الشركة المسؤولة" in result
-        assert "وليس اسم شخص" in result
+        assert "الاسم الكامل للشخص المكلّف" in result
+        assert "سيتولّى النظام لاحقًا استبدال الاسم بجهته" in result
 
-    def test_outcomes_are_consolidated(self):
+    def test_requires_consistent_names_across_tables(self):
         result = build_system_prompt(title="t", date="d")
-        assert "اجمع المهام والتوصيات المتقاربة" in result
+        assert "نفس صيغة الاسم بالضبط" in result
 
     def test_demands_detailed_discussion_points(self):
         result = build_system_prompt(title="t", date="d")

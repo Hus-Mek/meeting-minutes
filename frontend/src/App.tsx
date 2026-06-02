@@ -143,7 +143,6 @@ export default function App() {
             state={paneState}
             minutes={minutes}
             title={options.title}
-            onChange={setMinutes}
           />
         </section>
       </main>
