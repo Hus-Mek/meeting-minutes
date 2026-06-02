@@ -1,4 +1,4 @@
-import { useRef, useEffect, useState, type FormEvent } from "react"
+import { useRef, useEffect, useState } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import TurndownService from "turndown"
@@ -99,34 +99,38 @@ interface ResultDocProps2 extends ResultDocProps {
 }
 
 function ResultDoc({ minutes, title, onChange }: ResultDocProps2) {
-  const articleRef = useRef<HTMLElement>(null)
+  const previewRef = useRef<HTMLElement>(null)
+  const editRef = useRef<HTMLElement>(null)
   const [copied, setCopied] = useState(false)
   const [editing, setEditing] = useState(false)
   const [editHtml, setEditHtml] = useState("")
 
-  // Snapshot the rendered HTML when entering edit, so the contentEditable surface
-  // looks identical to the preview. Edits convert back to Markdown via turndown.
-  function toggleEdit() {
-    if (!editing) {
-      setEditHtml(articleRef.current?.innerHTML ?? "")
-      setEditing(true)
-    } else {
-      setEditing(false)
-    }
+  // The editable surface is fully UNCONTROLLED while typing — we never write state
+  // back into it (that's what caused the caret to jump). We only read it back to
+  // Markdown when finishing or exporting.
+  function liveMarkdown(): string {
+    if (editing && editRef.current) return turndown.turndown(editRef.current.innerHTML)
+    return minutes
   }
 
-  function handleInput(e: FormEvent<HTMLElement>) {
-    onChange?.(turndown.turndown(e.currentTarget.innerHTML))
+  function startEdit() {
+    setEditHtml(previewRef.current?.innerHTML ?? "")
+    setEditing(true)
+  }
+
+  function finishEdit() {
+    if (editRef.current) onChange?.(turndown.turndown(editRef.current.innerHTML))
+    setEditing(false)
   }
 
   async function copy() {
-    await navigator.clipboard.writeText(minutes)
+    await navigator.clipboard.writeText(liveMarkdown())
     setCopied(true)
     setTimeout(() => setCopied(false), 1600)
   }
 
   function download() {
-    const blob = new Blob([minutes + "\n"], { type: "text/markdown" })
+    const blob = new Blob([liveMarkdown() + "\n"], { type: "text/markdown" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
@@ -141,7 +145,7 @@ function ResultDoc({ minutes, title, onChange }: ResultDocProps2) {
         <Button
           variant={editing ? "secondary" : "ghost"}
           size="sm"
-          onClick={toggleEdit}
+          onClick={editing ? finishEdit : startEdit}
           disabled={!onChange}
         >
           {editing ? <Eye className="size-4" /> : <Pencil className="size-4" />}
@@ -164,26 +168,28 @@ function ResultDoc({ minutes, title, onChange }: ResultDocProps2) {
       </div>
       {editing && (
         <p className="no-print bg-[var(--oxide-soft)] px-6 py-1.5 text-center text-xs text-muted-foreground">
-          Click anywhere in the document to edit. Changes feed Copy / Download / Print.
+          Click in the document and edit directly. Press <strong>Done</strong> to save your changes.
         </p>
       )}
-      <div className="overflow-y-auto px-8 py-10 sm:px-12">
-        {editing ? (
+      {/* Both surfaces are kept mounted so the caret never resets; we just toggle which is shown. */}
+      <div className={editing ? "hidden" : "overflow-y-auto px-8 py-10 sm:px-12"}>
+        <article ref={previewRef} dir="auto" className="print-area minutes-doc mx-auto">
+          <Markdown remarkPlugins={[remarkGfm]}>{minutes}</Markdown>
+        </article>
+      </div>
+      {editing && (
+        <div className="overflow-y-auto px-8 py-10 sm:px-12">
           <article
+            ref={editRef}
             dir="auto"
             contentEditable
             suppressContentEditableWarning
-            onInput={handleInput}
             aria-label="Edit minutes"
             className="print-area minutes-doc mx-auto rounded-md p-1 outline-none ring-1 ring-[var(--oxide)]/25 focus-within:ring-2 focus-within:ring-ring"
             dangerouslySetInnerHTML={{ __html: editHtml }}
           />
-        ) : (
-          <article ref={articleRef} dir="auto" className="print-area minutes-doc mx-auto">
-            <Markdown remarkPlugins={[remarkGfm]}>{minutes}</Markdown>
-          </article>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }

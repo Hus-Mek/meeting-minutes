@@ -35,7 +35,7 @@ describe("MinutesPane", () => {
     expect(screen.getByRole("button", { name: /print/i })).toBeInTheDocument()
   })
 
-  it("edits inline in the rendered document and exports markdown", () => {
+  it("edits inline in the rendered document and saves markdown on Done", () => {
     const onChange = vi.fn()
     render(<MinutesPane state="result" minutes={SAMPLE} title="x" onChange={onChange} />)
     fireEvent.click(screen.getByRole("button", { name: /edit/i }))
@@ -43,11 +43,14 @@ describe("MinutesPane", () => {
     const doc = screen.getByLabelText(/edit minutes/i)
     expect(doc).toHaveAttribute("contenteditable", "true")
 
+    // Typing must NOT trigger onChange (that's what caused the caret to jump).
     doc.innerHTML = "<h2>عنوان جديد</h2><p>نص</p>"
     fireEvent.input(doc)
+    expect(onChange).not.toHaveBeenCalled()
 
-    expect(onChange).toHaveBeenCalled()
-    const lastArg = onChange.mock.calls.at(-1)?.[0] as string
-    expect(lastArg).toContain("عنوان جديد")
+    // Saving (Done) converts the edited document back to Markdown.
+    fireEvent.click(screen.getByRole("button", { name: /done/i }))
+    expect(onChange).toHaveBeenCalledOnce()
+    expect(onChange.mock.calls.at(-1)?.[0] as string).toContain("عنوان جديد")
   })
 })
