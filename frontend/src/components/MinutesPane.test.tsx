@@ -77,4 +77,46 @@ describe("MinutesPane", () => {
     // The owner of مشاري's task reflects the new organization reactively.
     expect(outcomesTable().getByText("وزارة المالية")).toBeInTheDocument()
   })
+
+  it("lets you add a roster row to set the org of an assignee not in قائمة الحضور", () => {
+    // خالد owns a task but is not in the roster → his owner shows verbatim until added.
+    const md = `## قائمة الحضور
+| # | الاسم | الجهة |
+| --- | --- | --- |
+| 1 | مشاري العتيبي | وزارة المالية |
+
+## نتائج الاجتماع
+| المهام/ التوصيات | المسؤول | التاريخ المستهدف |
+| --- | --- | --- |
+| إعداد التقرير | خالد السبيعي | — |`
+    render(<MinutesPane state="result" minutes={md} title="x" />)
+    expect(outcomesTable().getByText("خالد السبيعي")).toBeInTheDocument() // verbatim fallback
+
+    fireEvent.click(screen.getByRole("button", { name: /edit/i }))
+    fireEvent.click(screen.getByRole("button", { name: /إضافة حاضر/ }))
+
+    // The new (last) row's name + الجهة inputs.
+    const names = screen.getAllByPlaceholderText("الاسم")
+    const orgs = screen.getAllByPlaceholderText("أدخل الجهة")
+    fireEvent.change(names[names.length - 1], { target: { value: "خالد السبيعي" } })
+    fireEvent.change(orgs[orgs.length - 1], { target: { value: "أرامكو" } })
+
+    // Now خالد's task owner resolves to the organization, not his name.
+    expect(outcomesTable().getByText("أرامكو")).toBeInTheDocument()
+    expect(outcomesTable().queryByText("خالد السبيعي")).not.toBeInTheDocument()
+  })
+
+  it("keeps the user's الجهة edits when a new generation arrives", () => {
+    const { rerender } = render(<MinutesPane state="result" minutes={SAMPLE} title="x" />)
+    fireEvent.click(screen.getByRole("button", { name: /edit/i }))
+    // Fill مشاري's org, then a fresh generation comes in (same attendees, empty orgs).
+    fireEvent.change(screen.getAllByPlaceholderText("أدخل الجهة")[0], {
+      target: { value: "وزارة المالية" },
+    })
+    rerender(<MinutesPane state="loading" minutes={SAMPLE} title="x" />)
+    rerender(<MinutesPane state="result" minutes={`${SAMPLE}\n`} title="x" />)
+
+    // مشاري's task owner still shows the org the user typed (not wiped to —).
+    expect(outcomesTable().getByText("وزارة المالية")).toBeInTheDocument()
+  })
 })

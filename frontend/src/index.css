@@ -278,6 +278,40 @@
     line-height: 1.8;
     margin: 0 0 0.5rem;
 }
+.tmpl-default .mm-act {
+    width: 2rem;
+    text-align: center;
+    border: 0;
+}
+.mm-remove {
+    cursor: pointer;
+    border: 0;
+    background: transparent;
+    color: var(--muted-foreground);
+    font-size: 1.1rem;
+    line-height: 1;
+    padding: 0.1rem 0.35rem;
+    border-radius: 4px;
+}
+.mm-remove:hover {
+    color: var(--oxide);
+    background: var(--oxide-soft);
+}
+.mm-add {
+    cursor: pointer;
+    margin: 0.25rem 0 1rem;
+    border: 1px dashed var(--line);
+    background: transparent;
+    color: var(--muted-foreground);
+    font: inherit;
+    font-size: 0.9rem;
+    padding: 0.3rem 0.8rem;
+    border-radius: 6px;
+}
+.mm-add:hover {
+    border-color: var(--oxide);
+    color: var(--oxide);
+}
 
 @media (prefers-reduced-motion: reduce) {
     *,

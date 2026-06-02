@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { Check, Copy, Download, Eye, FileDown, FileText, Pencil } from "lucide-react"
+import { Check, Copy, Download, Eye, FileDown, FileText, Loader2, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { DefaultTemplate } from "@/components/templates/DefaultTemplate"
@@ -16,8 +16,11 @@ interface MinutesPaneProps {
 }
 
 export function MinutesPane({ state, minutes, title }: MinutesPaneProps) {
+  // Keep the result mounted once minutes exist, so in-place edits survive a
+  // re-generate (it shows a "regenerating" hint instead of unmounting and
+  // re-parsing from scratch). The first-ever generation still shows LoadingDoc.
+  if (minutes) return <ResultDoc minutes={minutes} title={title} regenerating={state === "loading"} />
   if (state === "loading") return <LoadingDoc />
-  if (state === "result") return <ResultDoc minutes={minutes} title={title} />
   return <EmptyDoc />
 }
 
@@ -75,15 +78,29 @@ function LoadingDoc() {
 interface ResultDocProps {
   minutes: string
   title: string
+  regenerating?: boolean
 }
 
-function ResultDoc({ minutes, title }: ResultDocProps) {
+// Carry the user's manually-entered الجهة values onto a freshly parsed model so a
+// re-generate keeps them (task/summary/points still refresh with the new content).
+function mergeOrgs(next: Minutes, prev: Minutes): Minutes {
+  const prevOrg = new Map(prev.attendees.map((a) => [a.name.trim(), a.org]))
+  return {
+    ...next,
+    attendees: next.attendees.map((a) => {
+      const saved = prevOrg.get(a.name.trim())
+      return saved?.trim() && !a.org.trim() ? { ...a, org: saved } : a
+    }),
+  }
+}
+
+function ResultDoc({ minutes, title, regenerating = false }: ResultDocProps) {
   const [model, setModel] = useState<Minutes>(() => parseMinutes(minutes))
   const [editing, setEditing] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  // Re-parse only when a NEW generation arrives (inline edits live in `model`).
-  useEffect(() => setModel(parseMinutes(minutes)), [minutes])
+  // A new generation refreshes the content but preserves the orgs the user typed.
+  useEffect(() => setModel((prev) => mergeOrgs(parseMinutes(minutes), prev)), [minutes])
 
   const docTitle = title || model.title || "meeting"
 
@@ -149,9 +166,16 @@ function ResultDoc({ minutes, title }: ResultDocProps) {
           </Button>
         </div>
       </div>
+      {regenerating && (
+        <p className="flex items-center justify-center gap-2 bg-[var(--oxide-soft)] px-6 py-1.5 text-center text-xs text-muted-foreground">
+          <Loader2 className="size-3 animate-spin" aria-hidden />
+          Regenerating… your الجهة edits are kept.
+        </p>
+      )}
       {editing && (
         <p className="bg-[var(--oxide-soft)] px-6 py-1.5 text-center text-xs text-muted-foreground">
-          Fill each person's الجهة in قائمة الحضور — the المسؤول column updates automatically.
+          Fill each person's الجهة in قائمة الحضور — the المسؤول column updates automatically. Add a row
+          for anyone missing.
         </p>
       )}
       <div className="print-area overflow-y-auto px-8 py-10 sm:px-12">

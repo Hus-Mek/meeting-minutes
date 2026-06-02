@@ -16,6 +16,9 @@ export function DefaultTemplate({ minutes: m, editable = false, onChange }: Temp
   const set = (patch: Partial<Minutes>) => onChange?.({ ...m, ...patch })
   const setAttendee = (i: number, patch: Partial<Minutes["attendees"][number]>) =>
     set({ attendees: m.attendees.map((a, idx) => (idx === i ? { ...a, ...patch } : a)) })
+  const addAttendee = () => set({ attendees: [...m.attendees, { name: "", org: "" }] })
+  const removeAttendee = (i: number) =>
+    set({ attendees: m.attendees.filter((_, idx) => idx !== i) })
   const setOutcome = (i: number, patch: Partial<Minutes["outcomes"][number]>) =>
     set({ outcomes: m.outcomes.map((o, idx) => (idx === i ? { ...o, ...patch } : o)) })
 
@@ -48,13 +51,14 @@ export function DefaultTemplate({ minutes: m, editable = false, onChange }: Temp
             <th className="mm-num">#</th>
             <th>الاسم</th>
             <th>الجهة</th>
+            {editable && <th className="mm-act" aria-hidden />}
           </tr>
         </thead>
         <tbody>
           {m.attendees.map((a, i) => (
             <tr key={i}>
               <td className="mm-num">{i + 1}</td>
-              <td><Field v={a.name} edit={editable} on={(v) => setAttendee(i, { name: v })} /></td>
+              <td><Field v={a.name} edit={editable} on={(v) => setAttendee(i, { name: v })} ph="الاسم" /></td>
               <td>
                 <Field
                   v={a.org}
@@ -63,10 +67,27 @@ export function DefaultTemplate({ minutes: m, editable = false, onChange }: Temp
                   ph="أدخل الجهة"
                 />
               </td>
+              {editable && (
+                <td className="mm-act">
+                  <button
+                    type="button"
+                    className="mm-remove"
+                    onClick={() => removeAttendee(i)}
+                    aria-label="حذف الحاضر"
+                  >
+                    ×
+                  </button>
+                </td>
+              )}
             </tr>
           ))}
         </tbody>
       </table>
+      {editable && (
+        <button type="button" className="mm-add" onClick={addAttendee}>
+          ＋ إضافة حاضر
+        </button>
+      )}
 
       <h2>نقاط نقاش الاجتماع</h2>
       <table className="mm-discussion">
