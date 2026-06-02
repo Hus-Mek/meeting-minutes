@@ -14,6 +14,35 @@ When the sources conflict on a *fact*, the transcript wins; when they conflict o
 *emphasis*, the notes win. A typical meeting is summarised in a single LLM call;
 very long transcripts fall back to map-reduce (per-window summaries → synthesis).
 
+Two ways to use it: the **[CLI](#usage)** or the **[web GUI](#web-gui)**.
+
+## Web GUI
+
+A document-grade, two-pane web app (React + Vite + shadcn/ui) served by FastAPI:
+inputs (transcript + notes + options) on the left, the generated minutes rendered
+as a real document on the right — with copy, download `.md`, and print-to-PDF.
+
+```bash
+# one-time build of the frontend
+cd frontend && npm install && npm run build && cd ..
+
+# run the server (serves the SPA + API at http://localhost:8000)
+export GROQ_API_KEY=...
+python -m meeting_minutes.web
+```
+
+Drop a diarized transcript JSON, paste your notes, and hit **Generate**. A live
+preview ("42 segments · 3 speakers · 18m") confirms the file parsed before you
+spend a call; non-default diarizer schemas and `SPEAKER_00`-style labels are
+handled under **Advanced**.
+
+**Frontend dev** (hot reload, proxies `/api` to FastAPI):
+
+```bash
+python -m meeting_minutes.web          # terminal 1 (API on :8000)
+cd frontend && npm run dev             # terminal 2 (UI on :5173)
+```
+
 ## Install
 
 ```bash

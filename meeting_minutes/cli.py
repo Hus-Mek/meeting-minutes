@@ -13,23 +13,7 @@ import datetime as _dt
 import sys
 
 from .transcript import FieldMap
-from .minutes import generate_minutes_from_files
-
-
-def _parse_speaker_map(spec: str | None) -> dict[str, str]:
-    """Parse 'SPEAKER_00=Alice,SPEAKER_01=Bob' into a rename map."""
-    if not spec:
-        return {}
-    mapping: dict[str, str] = {}
-    for pair in spec.split(","):
-        pair = pair.strip()
-        if not pair:
-            continue
-        if "=" not in pair:
-            raise ValueError(f"--speaker-map entry {pair!r} must be LABEL=Name")
-        label, name = pair.split("=", 1)
-        mapping[label.strip()] = name.strip()
-    return mapping
+from .minutes import generate_minutes_from_files, parse_speaker_map as _parse_speaker_map
 
 
 def build_parser() -> argparse.ArgumentParser:

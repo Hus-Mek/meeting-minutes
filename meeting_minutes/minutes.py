@@ -229,6 +229,57 @@ def _apply_speaker_map(
     )
 
 
+def parse_speaker_map(spec: str | None) -> dict[str, str]:
+    """Parse 'SPEAKER_00=Alice,SPEAKER_01=Bob' into a rename map.
+
+    Shared by the CLI and the web layer so anonymous-label renaming has one home.
+    """
+    if not spec:
+        return {}
+    mapping: dict[str, str] = {}
+    for pair in spec.split(","):
+        pair = pair.strip()
+        if not pair:
+            continue
+        if "=" not in pair:
+            raise ValueError(f"speaker-map entry {pair!r} must be LABEL=Name")
+        label, name = pair.split("=", 1)
+        mapping[label.strip()] = name.strip()
+    return mapping
+
+
+def build_minutes(
+    *,
+    segments: tuple[Segment, ...],
+    notes: str,
+    title: str,
+    date: str,
+    speaker_map: dict[str, str] | None = None,
+    backend: str = "groq",
+    model: str | None = None,
+    include_actions: bool = True,
+    client: LlmClient | None = None,
+) -> str:
+    """In-memory core: rename speakers, resolve model/client, generate minutes.
+
+    Shared by the file-based CLI wrapper and the web layer — neither touches the
+    filesystem here, so the same code path serves uploads and local files.
+    """
+    if speaker_map:
+        segments = _apply_speaker_map(segments, speaker_map)
+    resolved_model = model or default_model_for(backend)
+    llm = client or get_client(backend)
+    return generate_minutes(
+        segments=segments,
+        notes=notes,
+        title=title,
+        date=date,
+        client=llm,
+        model=resolved_model,
+        include_actions=include_actions,
+    )
+
+
 def generate_minutes_from_files(
     *,
     transcript_path: str | Path,
@@ -245,19 +296,17 @@ def generate_minutes_from_files(
 ) -> Path:
     """End-to-end IO wrapper: read inputs, generate minutes, write the file."""
     segments = load_transcript(transcript_path, fields=fields)
-    if speaker_map:
-        segments = _apply_speaker_map(segments, speaker_map)
     notes = Path(notes_path).read_text(encoding="utf-8")
-    resolved_model = model or default_model_for(backend)
-    llm = client or get_client(backend)
-    minutes = generate_minutes(
+    minutes = build_minutes(
         segments=segments,
         notes=notes,
         title=title,
         date=date,
-        client=llm,
-        model=resolved_model,
+        speaker_map=speaker_map,
+        backend=backend,
+        model=model,
         include_actions=include_actions,
+        client=client,
     )
     out = Path(out_path)
     out.write_text(minutes + "\n", encoding="utf-8")

@@ -1,0 +1,208 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@import "@fontsource-variable/fraunces";
+@import "@fontsource-variable/inter";
+@import "@fontsource-variable/source-serif-4";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+    --font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+    --font-heading: 'Fraunces Variable', Georgia, 'Times New Roman', serif;
+    --font-serif: 'Source Serif 4 Variable', Georgia, serif;
+    --font-mono: ui-monospace, 'SFMono-Regular', 'Menlo', monospace;
+
+    --color-paper: var(--paper);
+    --color-line: var(--line);
+    --color-oxide: var(--oxide);
+
+    --color-ring: var(--ring);
+    --color-input: var(--input);
+    --color-border: var(--border);
+    --color-destructive: var(--destructive);
+    --color-accent-foreground: var(--accent-foreground);
+    --color-accent: var(--accent);
+    --color-muted-foreground: var(--muted-foreground);
+    --color-muted: var(--muted);
+    --color-secondary-foreground: var(--secondary-foreground);
+    --color-secondary: var(--secondary);
+    --color-primary-foreground: var(--primary-foreground);
+    --color-primary: var(--primary);
+    --color-popover-foreground: var(--popover-foreground);
+    --color-popover: var(--popover);
+    --color-card-foreground: var(--card-foreground);
+    --color-card: var(--card);
+    --color-foreground: var(--foreground);
+    --color-background: var(--background);
+
+    --radius-sm: calc(var(--radius) * 0.6);
+    --radius-md: calc(var(--radius) * 0.85);
+    --radius-lg: var(--radius);
+    --radius-xl: calc(var(--radius) * 1.4);
+}
+
+/* Document-grade editorial palette: warm paper, ink text, single oxide accent. */
+:root {
+    --paper: #fbfbf8;
+    --line: #e6e3da;
+    --oxide: #b0411e;
+
+    --background: #fbfbf8;
+    --foreground: #1a1a17;
+    --card: #ffffff;
+    --card-foreground: #1a1a17;
+    --popover: #ffffff;
+    --popover-foreground: #1a1a17;
+    --primary: #b0411e;
+    --primary-foreground: #fbfbf8;
+    --secondary: #f0eee6;
+    --secondary-foreground: #1a1a17;
+    --muted: #f0eee6;
+    --muted-foreground: #6b6b63;
+    --accent: #efe9de;
+    --accent-foreground: #1a1a17;
+    --destructive: #b3261e;
+    --border: #e6e3da;
+    --input: #e0ddd2;
+    --ring: #b0411e;
+    --radius: 0.375rem;
+}
+
+.dark {
+    --paper: #14130f;
+    --line: rgba(255, 255, 255, 0.1);
+    --oxide: #d86a43;
+
+    --background: #14130f;
+    --foreground: #ece9e0;
+    --card: #1c1a15;
+    --card-foreground: #ece9e0;
+    --popover: #1c1a15;
+    --popover-foreground: #ece9e0;
+    --primary: #d86a43;
+    --primary-foreground: #14130f;
+    --secondary: #262320;
+    --secondary-foreground: #ece9e0;
+    --muted: #262320;
+    --muted-foreground: #a8a296;
+    --accent: #2a2620;
+    --accent-foreground: #ece9e0;
+    --destructive: #e0524b;
+    --border: rgba(255, 255, 255, 0.1);
+    --input: rgba(255, 255, 255, 0.14);
+    --ring: #d86a43;
+}
+
+@layer base {
+    * {
+        @apply border-border outline-ring/50;
+    }
+    body {
+        @apply bg-background text-foreground;
+        font-synthesis-weight: none;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+    }
+    button:not(:disabled),
+    [role="button"]:not(:disabled) {
+        cursor: pointer;
+    }
+    html {
+        @apply font-sans;
+    }
+}
+
+/* The rendered minutes — a real document, not a chat bubble. */
+.minutes-doc {
+    font-family: var(--font-serif);
+    color: var(--foreground);
+    font-size: 1.0625rem;
+    line-height: 1.7;
+    max-width: 68ch;
+}
+.minutes-doc h1 {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 1.9rem;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    margin: 0 0 1.5rem;
+}
+.minutes-doc h2 {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 1.3rem;
+    letter-spacing: -0.005em;
+    margin: 2rem 0 0.6rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid var(--line);
+}
+.minutes-doc h3 {
+    font-family: var(--font-heading);
+    font-weight: 600;
+    font-size: 1.08rem;
+    margin: 1.4rem 0 0.4rem;
+}
+.minutes-doc p {
+    margin: 0 0 0.85rem;
+}
+.minutes-doc ul,
+.minutes-doc ol {
+    margin: 0 0 1rem;
+    padding-left: 1.35rem;
+}
+.minutes-doc li {
+    margin: 0.2rem 0;
+    padding-left: 0.15rem;
+}
+.minutes-doc li::marker {
+    color: var(--oxide);
+}
+.minutes-doc strong {
+    font-weight: 600;
+    color: var(--foreground);
+}
+.minutes-doc a {
+    color: var(--oxide);
+    text-underline-offset: 2px;
+}
+/* Subtle styling for [HH:MM:SS] timestamp anchors that survive into the minutes. */
+.minutes-doc code {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    color: var(--muted-foreground);
+    background: var(--muted);
+    padding: 0.05em 0.35em;
+    border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Print: the minutes document only, as a clean printable memo. */
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    .print-area,
+    .print-area * {
+        visibility: visible;
+    }
+    .print-area {
+        position: absolute;
+        inset: 0;
+        padding: 0;
+        max-width: none;
+    }
+    .no-print {
+        display: none !important;
+    }
+}
