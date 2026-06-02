@@ -175,9 +175,16 @@ else:
 
 
 def main() -> None:
+    import os
+
     import uvicorn
 
-    uvicorn.run("meeting_minutes.web:app", host="127.0.0.1", port=8000)
+    # Bind to all interfaces by default so the app is reachable on the LAN; override
+    # with HOST/PORT. NOTE: 0.0.0.0 exposes the server to your network — there is no
+    # auth, and your GROQ_API_KEY funds every request. Use 127.0.0.1 for local-only.
+    host = os.environ.get("HOST", "0.0.0.0")
+    port = int(os.environ.get("PORT", "8000"))
+    uvicorn.run("meeting_minutes.web:app", host=host, port=port)
 
 
 if __name__ == "__main__":
