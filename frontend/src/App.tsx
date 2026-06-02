@@ -22,6 +22,7 @@ const DEFAULT_OPTIONS: MinutesOptions = {
   time: "",
   location: "",
   attendees: "",
+  recap: "",
   backend: "groq",
   model: "",
   speakerKey: "speaker",
@@ -138,7 +139,12 @@ export default function App() {
           />
         </section>
         <section className="min-h-0 overflow-hidden bg-paper">
-          <MinutesPane state={paneState} minutes={minutes} title={options.title} />
+          <MinutesPane
+            state={paneState}
+            minutes={minutes}
+            title={options.title}
+            onChange={setMinutes}
+          />
         </section>
       </main>
     </div>

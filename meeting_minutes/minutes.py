@@ -163,6 +163,7 @@ def _generate_map_reduce(
     time: str,
     location: str,
     attendees: str,
+    recap: str,
     model: str,
     budget: int,
 ) -> str:
@@ -176,7 +177,7 @@ def _generate_map_reduce(
         client, summaries, notes=notes, synthesis_system=system, model=model, budget=budget
     )
     user = prompt.build_synthesis_prompt(
-        notes=notes, summaries="\n\n".join(summaries), attendees=attendees
+        notes=notes, summaries="\n\n".join(summaries), attendees=attendees, recap=recap
     )
     return client.generate(system, user, model=model).strip()
 
@@ -192,6 +193,7 @@ def generate_minutes(
     time: str = "",
     location: str = "",
     attendees: str = "",
+    recap: str = "",
     input_token_budget: int | None = None,
 ) -> str:
     """Produce minutes markdown, choosing single-pass vs map-reduce by real budget."""
@@ -204,7 +206,9 @@ def generate_minutes(
 
     transcript_text = format_for_prompt(segments)  # computed once, reused below
     system = prompt.build_system_prompt(title=title, date=date, time=time, location=location)
-    user = prompt.build_user_prompt(notes=notes, transcript=transcript_text, attendees=attendees)
+    user = prompt.build_user_prompt(
+        notes=notes, transcript=transcript_text, attendees=attendees, recap=recap
+    )
 
     if _budget_tokens(system + user) <= budget:
         minutes = client.generate(system, user, model=model).strip()
@@ -218,6 +222,7 @@ def generate_minutes(
             time=time,
             location=location,
             attendees=attendees,
+            recap=recap,
             model=model,
             budget=budget,
         )
@@ -265,6 +270,7 @@ def build_minutes(
     time: str = "",
     location: str = "",
     attendees: str = "",
+    recap: str = "",
     speaker_map: dict[str, str] | None = None,
     backend: str = "groq",
     model: str | None = None,
@@ -287,6 +293,7 @@ def build_minutes(
         time=time,
         location=location,
         attendees=attendees,
+        recap=recap,
         client=llm,
         model=resolved_model,
     )
@@ -302,6 +309,7 @@ def generate_minutes_from_files(
     time: str = "",
     location: str = "",
     attendees: str = "",
+    recap: str = "",
     backend: str = "groq",
     model: str | None = None,
     fields: FieldMap | None = None,
@@ -319,6 +327,7 @@ def generate_minutes_from_files(
         time=time,
         location=location,
         attendees=attendees,
+        recap=recap,
         speaker_map=speaker_map,
         backend=backend,
         model=model,

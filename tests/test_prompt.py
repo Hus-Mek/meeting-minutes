@@ -43,6 +43,20 @@ class TestSystemPrompt:
         assert "Unidentified Speaker" in result
         assert "قائمة الحضور" in result
 
+    def test_responsibility_is_entity_not_person(self):
+        result = build_system_prompt(title="t", date="d")
+        assert "الجهة أو الشركة المسؤولة" in result
+        assert "وليس اسم شخص" in result
+
+    def test_demands_detailed_discussion_points(self):
+        result = build_system_prompt(title="t", date="d")
+        assert "تفصيلية وشاملة" in result
+
+    def test_recap_is_described_as_unreliable_hint(self):
+        result = build_system_prompt(title="t", date="d")
+        assert "read.ai" in result
+        assert "ولا تعتمدها مصدرًا للحقائق" in result
+
 
 class TestUserPrompt:
     def test_wraps_roster_notes_and_transcript(self):
@@ -56,6 +70,11 @@ class TestUserPrompt:
     def test_missing_roster_becomes_dash(self):
         result = build_user_prompt(notes="n", transcript="t", attendees="")
         assert "<roster>\n—\n</roster>" in result
+
+    def test_includes_recap_when_provided(self):
+        result = build_user_prompt(notes="n", transcript="t", recap="Action Items: ...")
+        assert "recap_readai_unreliable" in result
+        assert "Action Items: ..." in result
 
 
 class TestSynthesisPrompt:

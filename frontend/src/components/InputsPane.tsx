@@ -117,6 +117,38 @@ export function InputsPane({
         </p>
       </section>
 
+      <section className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="recap" className={SECTION_LABEL}>
+            ملخص read.ai · Recap <span className="lowercase">(optional)</span>
+          </Label>
+          <label className="cursor-pointer text-xs text-oxide hover:underline">
+            Load file
+            <input
+              type="file"
+              accept=".txt,.md,text/plain"
+              className="sr-only"
+              onChange={async (e) => {
+                const f = e.target.files?.[0]
+                if (f) onChange({ recap: await f.text() })
+                e.target.value = ""
+              }}
+            />
+          </label>
+        </div>
+        <Textarea
+          id="recap"
+          dir="auto"
+          value={options.recap}
+          onChange={(e) => onChange({ recap: e.target.value })}
+          placeholder="الصق ملخص read.ai هنا (اختياري) — يساعد على التفاصيل واكتشاف المهام."
+          className="min-h-20 resize-y bg-card text-sm leading-relaxed"
+        />
+        <p className="text-xs text-muted-foreground">
+          Partial &amp; approximate — used as a hint for detail/structure, never as fact.
+        </p>
+      </section>
+
       <Accordion type="single" collapsible className="border-t border-border">
         <AccordionItem value="advanced" className="border-b-0">
           <AccordionTrigger className={`${SECTION_LABEL} hover:no-underline`}>

@@ -14,6 +14,7 @@ export interface MinutesOptions extends FieldKeys {
   time: string
   location: string
   attendees: string
+  recap: string
   backend: string
   model: string
   speakerMap: string
@@ -48,6 +49,7 @@ export function buildMinutesFormData(file: File, opts: MinutesOptions): FormData
   form.append("time", opts.time)
   form.append("location", opts.location)
   form.append("attendees", opts.attendees)
+  form.append("recap", opts.recap)
   form.append("backend", opts.backend)
   form.append("model", opts.model)
   form.append("speaker_map", opts.speakerMap)

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { describe, expect, it, vi } from "vitest"
+import { fireEvent, render, screen } from "@testing-library/react"
 import { MinutesPane } from "./MinutesPane"
 
 const SAMPLE = `# Weekly Sync — 2026-06-01
@@ -33,5 +33,15 @@ describe("MinutesPane", () => {
     expect(screen.getByRole("button", { name: /copy/i })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /download/i })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /print/i })).toBeInTheDocument()
+  })
+
+  it("toggles to an editable textarea and propagates edits", () => {
+    const onChange = vi.fn()
+    render(<MinutesPane state="result" minutes={SAMPLE} title="x" onChange={onChange} />)
+    fireEvent.click(screen.getByRole("button", { name: /edit/i }))
+    const textarea = screen.getByLabelText(/edit minutes markdown/i)
+    expect(textarea).toHaveValue(SAMPLE)
+    fireEvent.change(textarea, { target: { value: SAMPLE + "\n- more" } })
+    expect(onChange).toHaveBeenCalledWith(SAMPLE + "\n- more")
   })
 })

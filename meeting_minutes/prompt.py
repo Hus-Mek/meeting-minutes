@@ -44,9 +44,9 @@ _CONTRACT = """\
 
 ## نقاط نقاش الاجتماع
 **ملخص الاجتماع**
-جملة أو جملتان تمهيديتان ثم النقاط:
-- نقطة نقاش
-- نقطة نقاش
+فقرة تمهيدية تذكر ما استُعرض ومن قدّمه، ثم قائمة نقاط تفصيلية:
+- نقطة نقاش تفصيلية
+- نقطة نقاش تفصيلية
 
 ## نتائج الاجتماع
 | المهام/ التوصيات | المسؤول | التاريخ المستهدف |
@@ -56,10 +56,17 @@ _CONTRACT = """\
 قواعد الإخراج:
 - التزم بالعناوين الأربعة أعلاه وبهذا الترتيب تمامًا، ولا تضف أقسامًا أخرى.
 - قائمة الحضور: استخرج المتحدثين الحقيقيين من النص (تجاهل "Unidentified Speaker")، وادمجهم مع قائمة الحضور المزوّدة لتحديد الجهة؛ واترك خانة الجهة فارغة (—) إن كانت غير معروفة.
-- نقاط النقاش: جُمل رسمية موجزة، مرتّبة حسب الأهمية كما تشير الملاحظات.
-- نتائج الاجتماع: صفّ لكل مهمة/توصية مع المسؤول والتاريخ المستهدف؛ اترك التاريخ فارغًا (—) إن لم يُذكر.
+- نقاط النقاش يجب أن تكون **تفصيلية وشاملة**: غطِّ كل موضوع ومهمة ومرحلة نوقشت، واذكر التفاصيل المهمة لكل بند (الأرقام، المدد الزمنية، القرارات، المبررات، نقاط الاتفاق والخلاف، والملاحظات على كل عنصر). لا تختصر بإفراط — اكتب نقطة منفصلة لكل فكرة جوهرية، ورتّب النقاط حسب الأهمية كما تشير الملاحظات. اكتب نقاطًا كثيرة بقدر ما يحتمله النقاش الفعلي.
+- نتائج الاجتماع: صفّ لكل مهمة أو توصية. **عمود «المسؤول» يجب أن يكون الجهة أو الشركة المسؤولة** (مثل: «شركة هوّز»، «الإدارة العامة للتراخيص») **وليس اسم شخص**؛ إن نُسبت المهمة إلى شخص فاذكر جهته بدلًا منه (استعن بقائمة الحضور لمعرفة الجهة). اترك التاريخ المستهدف فارغًا (—) إن لم يُذكر.
 - لا تختلق قرارات أو أسماء أو أرقامًا أو تواريخ. أبقِ المصطلحات التقنية الإنجليزية (Workflow, API) كما وردت عند اللزوم.
 - أخرج وثيقة Markdown فقط، دون أي نص إضافي قبلها أو بعدها."""
+
+# Optional read.ai recap: a weak, possibly-inaccurate AI draft — a hint only.
+_RECAP_NOTE = (
+    "- قد تُعطى أيضًا مسودة تلخيص آلية (recap) من read.ai، وهي **ناقصة وقد تكون غير دقيقة**: "
+    "استأنس بها فقط للبنية واكتشاف المهام/البنود التي قد تخفى، ولا تعتمدها مصدرًا للحقائق "
+    "أبدًا — النص الحرفي/الملخصات هو المرجع."
+)
 
 _SYSTEM = """\
 أنت كاتب محاضر اجتماعات محترف ودقيق للاجتماعات الرسمية الحكومية والمؤسسية.
@@ -67,16 +74,17 @@ _SYSTEM = """\
 
 طريقة استخدام المصادر:
 {grounding}
+{recap_note}
 
 {contract}"""
 
-# Map step: summarise one transcript window while preserving what the minutes need.
+# Map step: summarise one transcript window in DETAIL so the merged minutes stay rich.
 WINDOW_SYSTEM_PROMPT = """\
-أنت كاتب محضر تلخّص مقطعًا واحدًا من نص اجتماع أطول. استخرج بنقاط Markdown موجزة:
-- نقاط النقاش والقرارات.
-- المهام/التوصيات مع المسؤول والتاريخ المستهدف إن وُجد.
-- أسماء المتحدثين والجهات إن ذُكرت، مع الحفاظ على المصطلحات والأرقام كما هي.
-لا تختلق شيئًا. أخرج النقاط فقط."""
+أنت كاتب محضر تلخّص مقطعًا واحدًا من نص اجتماع أطول. استخرج **بتفصيل** وبنقاط Markdown:
+- جميع نقاط النقاش والقرارات والملاحظات، مع التفاصيل المهمة (الأرقام، المدد، المبررات، نقاط الاتفاق/الخلاف).
+- المهام والتوصيات، مع **الجهة/الشركة المسؤولة** (لا اسم شخص) والتاريخ المستهدف إن وُجد.
+- أسماء المتحدثين وجهاتهم إن ذُكرت، مع الحفاظ على المصطلحات والأرقام كما هي.
+لا تختصر بإفراط ولا تختلق شيئًا. أخرج النقاط فقط."""
 
 _USER = """\
 <roster>
@@ -86,6 +94,10 @@ _USER = """\
 <notes>
 {notes}
 </notes>
+
+<recap_readai_unreliable>
+{recap}
+</recap_readai_unreliable>
 
 <transcript>
 {transcript}
@@ -112,6 +124,10 @@ _SYNTHESIS_USER = """\
 <notes>
 {notes}
 </notes>
+
+<recap_readai_unreliable>
+{recap}
+</recap_readai_unreliable>
 
 <segment_summaries>
 {summaries}
@@ -146,13 +162,20 @@ def build_system_prompt(
     else:
         source_desc = "تُعطى لك نص الاجتماع الحرفي وملاحظات أحد المشاركين."
         grounding = _GROUNDING_TRANSCRIPT
-    return _SYSTEM.format(source_desc=source_desc, grounding=grounding, contract=contract)
+    return _SYSTEM.format(
+        source_desc=source_desc, grounding=grounding, recap_note=_RECAP_NOTE, contract=contract
+    )
 
 
-def build_user_prompt(*, notes: str, transcript: str, attendees: str = "") -> str:
-    """User prompt pairing the roster + notes (spine) with the full transcript."""
+def build_user_prompt(
+    *, notes: str, transcript: str, attendees: str = "", recap: str = ""
+) -> str:
+    """User prompt pairing the roster + notes (spine) + optional recap with the transcript."""
     return _USER.format(
-        attendees=_cell(attendees), notes=_cell(notes), transcript=transcript.strip()
+        attendees=_cell(attendees),
+        notes=_cell(notes),
+        recap=_cell(recap),
+        transcript=transcript.strip(),
     )
 
 
@@ -161,8 +184,13 @@ def build_window_user(*, notes: str, transcript: str) -> str:
     return _WINDOW_USER.format(notes=_cell(notes), transcript=transcript.strip())
 
 
-def build_synthesis_prompt(*, notes: str, summaries: str, attendees: str = "") -> str:
+def build_synthesis_prompt(
+    *, notes: str, summaries: str, attendees: str = "", recap: str = ""
+) -> str:
     """User prompt that merges per-window summaries (map-reduce reduce step)."""
     return _SYNTHESIS_USER.format(
-        attendees=_cell(attendees), notes=_cell(notes), summaries=summaries.strip()
+        attendees=_cell(attendees),
+        notes=_cell(notes),
+        recap=_cell(recap),
+        summaries=summaries.strip(),
     )

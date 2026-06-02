@@ -41,6 +41,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--attendees-file", default=None, help="Path to a roster file")
     parser.add_argument(
+        "--recap",
+        default="",
+        help="Optional read.ai recap text (partial/approximate; or use --recap-file)",
+    )
+    parser.add_argument("--recap-file", default=None, help="Path to a read.ai recap file")
+    parser.add_argument(
         "--backend",
         default="groq",
         choices=["groq", "claude", "ollama"],
@@ -78,6 +84,9 @@ def main(argv: list[str] | None = None) -> int:
         attendees = args.attendees
         if args.attendees_file:
             attendees = Path(args.attendees_file).read_text(encoding="utf-8")
+        recap = args.recap
+        if args.recap_file:
+            recap = Path(args.recap_file).read_text(encoding="utf-8")
         out = generate_minutes_from_files(
             transcript_path=args.transcript,
             notes_path=args.notes,
@@ -87,6 +96,7 @@ def main(argv: list[str] | None = None) -> int:
             time=args.time,
             location=args.location,
             attendees=attendees,
+            recap=recap,
             backend=args.backend,
             model=args.model,
             fields=fields,

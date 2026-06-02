@@ -114,6 +114,15 @@ class TestMinutes:
         assert "##" in body["minutes"]
         assert body["meta"]["segments"] == 2
 
+    def test_accepts_optional_recap(self, client):
+        resp = client.post(
+            "/api/minutes",
+            files={"transcript": _transcript_file()},
+            data={"recap": "Action Items:\n* Bob: do X"},
+        )
+        assert resp.status_code == 200
+        assert "##" in resp.json()["minutes"]
+
     def test_bad_json_is_400(self, client):
         resp = client.post(
             "/api/minutes",

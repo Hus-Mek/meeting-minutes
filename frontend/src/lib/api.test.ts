@@ -8,6 +8,7 @@ const OPTIONS: MinutesOptions = {
   time: "11:30–12:30",
   location: "عن بعد",
   attendees: "مشاري — هيئة",
+  recap: "Action Items: ...",
   backend: "groq",
   model: "",
   speakerKey: "speaker",
@@ -35,6 +36,7 @@ describe("buildMinutesFormData", () => {
     expect(form.get("time")).toBe("11:30–12:30")
     expect(form.get("location")).toBe("عن بعد")
     expect(form.get("attendees")).toBe("مشاري — هيئة")
+    expect(form.get("recap")).toBe("Action Items: ...")
   })
 
   it("falls back to 'Meeting' when title is empty", () => {

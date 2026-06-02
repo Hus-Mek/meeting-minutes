@@ -27,8 +27,8 @@ MODEL_CONTEXT_WINDOWS = {
 DEFAULT_CONTEXT_WINDOW = 128_000
 
 # Reserve room for the model's own output so a near-full input still leaves space
-# to write the minutes.
-DEFAULT_MAX_OUTPUT_TOKENS = 8_192
+# to write the minutes. Detailed Arabic minutes can be long, so this is generous.
+DEFAULT_MAX_OUTPUT_TOKENS = 16_384
 
 # Network resilience defaults (Groq SDK retries 429/5xx/connection errors).
 DEFAULT_TIMEOUT_SECONDS = 90.0

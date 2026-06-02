@@ -82,11 +82,11 @@ class TestOpenRouterGuard:
 
 class TestBudgeting:
     def test_known_model_reserves_output_room(self):
-        # 128k window minus 8192 reserved output.
-        assert max_input_tokens("llama-3.3-70b-versatile") == 128_000 - 8_192
+        # 128k window minus 16384 reserved output.
+        assert max_input_tokens("llama-3.3-70b-versatile") == 128_000 - 16_384
 
     def test_unknown_model_uses_conservative_fallback(self):
-        assert max_input_tokens("some-future-model") == 128_000 - 8_192
+        assert max_input_tokens("some-future-model") == 128_000 - 16_384
 
     def test_default_model_per_backend(self):
         assert default_model_for("groq") == DEFAULT_GROQ_MODEL
@@ -129,7 +129,7 @@ class TestGroqClient:
         assert result == "## Topic\nDone."
         assert captured["api_key"] == "test-key"
         assert captured["model"] == DEFAULT_GROQ_MODEL
-        assert captured["max_tokens"] == 8_192
+        assert captured["max_tokens"] == 16_384
         assert captured["messages"][0]["role"] == "system"
         # SDK constructed with retries + a trust_env=False http client (proxy-proof)
         assert captured["init_kwargs"]["max_retries"] >= 1
