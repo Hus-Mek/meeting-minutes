@@ -26,11 +26,44 @@ export interface Minutes {
 
 const isPlaceholder = (s: string) => s.includes("«") || s === "" || /^[-—\s]*$/.test(s)
 
-/** The الجهة of a task's assignee, or "—" until it's filled in. The person is never shown. */
+// Leading honorifics/titles to ignore when matching names (the transcript may
+// introduce "م. محمد" or "الدكتور سارة" while the roster stores the bare name).
+const HONORIFIC = /^(?:م|د|أ|ا|الاستاذ|الدكتور|المهندس|الشيخ|السيد|السيده|الانسه)\.?\s+/u
+
+/**
+ * Normalize an Arabic/Latin name for *matching only* (display always uses the
+ * original): drop tashkeel/tatweel, unify alef/ya/ta-marbuta variants, strip a
+ * leading honorific, collapse whitespace, and lowercase. Saudi context: names
+ * appear with small spelling differences across the two tables.
+ */
+function normalizeName(s: string): string {
+  return s
+    .normalize("NFC")
+    .replace(/[ً-ْٰـ]/g, "") // tashkeel + superscript alef + tatweel
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ى/g, "ي")
+    .replace(/ة/g, "ه")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(HONORIFIC, "")
+    .toLowerCase()
+}
+
+/**
+ * Resolve a task's owner for display. A roster person shows their الجهة (or "—"
+ * until it's filled in). Anyone NOT in the roster — a committee, a company, an
+ * external party, or a name spelled differently — is shown verbatim rather than
+ * dropped, so the document never loses the owner the LLM actually decided.
+ */
 export function ownerOrg(minutes: Minutes, person: string): string {
-  const a = minutes.attendees.find((x) => x.name.trim() === person.trim())
-  const org = a?.org?.trim()
-  return org && org !== "—" ? org : "—"
+  const key = normalizeName(person)
+  if (!key) return "—"
+  const a = minutes.attendees.find((x) => normalizeName(x.name) === key)
+  if (a) {
+    const org = a.org.trim()
+    return org && org !== "—" ? org : "—"
+  }
+  return person.trim()
 }
 
 function splitSections(md: string): Record<string, string[]> {
@@ -54,6 +87,8 @@ function sectionByKeyword(sections: Record<string, string[]>, needle: string): s
 }
 
 // Rows of a Markdown pipe-table (the separator line is dropped). Each row is cells.
+// Only the outer structural pipes delimit cells: a literal "\|" inside a cell is
+// unescaped, not split on, so prose like `cat log \| grep` stays in one cell.
 function tableRows(lines: string[]): string[][] {
   const rows: string[][] = []
   for (const line of lines) {
@@ -62,9 +97,10 @@ function tableRows(lines: string[]): string[][] {
     if (/^\|[\s:|-]+\|?\s*$/.test(t)) continue // separator
     rows.push(
       t
-        .replace(/^\||\|$/g, "")
-        .split("|")
-        .map((c) => c.trim()),
+        .replace(/^\|/, "")
+        .replace(/\|$/, "")
+        .split(/(?<!\\)\|/)
+        .map((c) => c.replace(/\\\|/g, "|").trim()),
     )
   }
   return rows
@@ -76,7 +112,9 @@ export function parseMinutes(md: string): Minutes {
 
   const h1 = pre.find((l) => l.startsWith("# ")) ?? ""
   let title = h1.replace(/^#\s+/, "").replace(/^محضر اجتماع\s*[—-]\s*/, "")
-  title = title.replace(/\s*\(.*\)\s*$/, "").trim()
+  // Strip only a trailing DATE in parens (starts with an ASCII/Arabic-Indic digit),
+  // never an internal/meaningful parenthetical like "(تقني)" or "(يناير-مارس)".
+  title = title.replace(/\s*\([\d٠-٩][^)]*\)\s*$/u, "").trim()
 
   const headerRows = tableRows(pre)
   const meta = headerRows[1] ?? [] // row after the التاريخ/الوقت/الموقع header
@@ -84,8 +122,9 @@ export function parseMinutes(md: string): Minutes {
 
   const attendees: Attendee[] = []
   for (const row of tableRows(sectionByKeyword(sections, "قائمة الحضور")).slice(1)) {
+    // # | name | org. Any extra columns (an unescaped pipe in the org) fold back in.
     const name = row.length >= 3 ? row[1] : row[0]
-    const org = row.length >= 3 ? row[2] : (row[1] ?? "")
+    const org = row.length >= 3 ? row.slice(2).join(" | ") : (row[1] ?? "")
     if (name && !isPlaceholder(name)) attendees.push({ name, org: isPlaceholder(org) ? "" : org })
   }
 
@@ -105,7 +144,16 @@ export function parseMinutes(md: string): Minutes {
 
   const outcomes: Outcome[] = []
   for (const row of tableRows(sectionByKeyword(sections, "نتائج")).slice(1)) {
-    const [task = "", person = "", date2 = ""] = row
+    // task | person | date. The task is the prose field most likely to contain an
+    // unescaped pipe, so any extra columns fold back into it (person/date are last two).
+    let task = row[0] ?? ""
+    let person = row[1] ?? ""
+    let date2 = row[2] ?? ""
+    if (row.length > 3) {
+      task = row.slice(0, row.length - 2).join(" | ")
+      person = row[row.length - 2]
+      date2 = row[row.length - 1]
+    }
     if (task && !isPlaceholder(task)) {
       outcomes.push({
         task,
@@ -127,7 +175,9 @@ export function parseMinutes(md: string): Minutes {
   }
 }
 
-const cell = (s: string) => (s && s.trim() ? s.trim() : "—")
+// A table cell: trim, default to "—", and escape any literal pipe so it survives
+// re-parsing (tableRows unescapes "\|" back to "|").
+const cell = (s: string) => (s && s.trim() ? s.trim() : "—").replace(/\|/g, "\\|")
 
 /** Serialize back to the Markdown contract (for the .md download / Copy). */
 export function toMarkdown(m: Minutes): string {
@@ -148,7 +198,7 @@ export function toMarkdown(m: Minutes): string {
     "**ملخص الاجتماع**",
     m.summary,
     "",
-    ...m.points.map((p) => `- ${p}`),
+    ...m.points.filter((p) => p.trim()).map((p) => `- ${p}`),
     "",
     "## نتائج الاجتماع",
     "| المهام/ التوصيات | المسؤول | التاريخ المستهدف |",

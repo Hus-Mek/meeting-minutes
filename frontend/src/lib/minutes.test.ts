@@ -64,6 +64,31 @@ describe("parseMinutes", () => {
 | 2 | مشاري | — |`
     expect(parseMinutes(md).attendees).toEqual([{ name: "مشاري", org: "" }])
   })
+
+  it("keeps an escaped pipe inside a task cell instead of splitting on it", () => {
+    const md = `## نتائج الاجتماع
+| المهام/ التوصيات | المسؤول | التاريخ المستهدف |
+| --- | --- | --- |
+| تشغيل cat log \\| grep ERROR | مشاري العتيبي | 2026-07-01 |`
+    expect(parseMinutes(md).outcomes).toEqual([
+      { task: "تشغيل cat log | grep ERROR", person: "مشاري العتيبي", date: "2026-07-01" },
+    ])
+  })
+
+  it("recovers columns when an unescaped pipe leaks into the prose task cell", () => {
+    const md = `## نتائج الاجتماع
+| المهام/ التوصيات | المسؤول | التاريخ المستهدف |
+| --- | --- | --- |
+| تشغيل cat log | grep ERROR | مشاري العتيبي | 2026-07-01 |`
+    expect(parseMinutes(md).outcomes).toEqual([
+      { task: "تشغيل cat log | grep ERROR", person: "مشاري العتيبي", date: "2026-07-01" },
+    ])
+  })
+
+  it("strips a trailing date but keeps a meaningful parenthetical in the title", () => {
+    expect(parseMinutes("# محضر اجتماع — اجتماع (تقني) (2026-03-31)").title).toBe("اجتماع (تقني)")
+    expect(parseMinutes("# محضر اجتماع — اجتماع المتابعة (تقني)").title).toBe("اجتماع المتابعة (تقني)")
+  })
 })
 
 describe("ownerOrg", () => {
@@ -85,16 +110,28 @@ describe("ownerOrg", () => {
     expect(ownerOrg(base, "مشاري العتيبي")).toBe("وزارة المالية")
   })
 
-  it("returns — when the organization is not filled in", () => {
+  it("returns — for a roster person whose organization is not filled in", () => {
     expect(ownerOrg(base, "نورة القحطاني")).toBe("—")
   })
 
-  it("returns — when the person is not in the roster", () => {
-    expect(ownerOrg(base, "زائر")).toBe("—")
+  it("shows a non-roster assignee verbatim (may be a committee/company), never dropping it", () => {
+    expect(ownerOrg(base, "اللجنة الفنية")).toBe("اللجنة الفنية")
+    expect(ownerOrg(base, "زائر خارجي")).toBe("زائر خارجي")
   })
 
-  it("matches names ignoring surrounding whitespace", () => {
-    expect(ownerOrg(base, "  مشاري العتيبي  ")).toBe("وزارة المالية")
+  it("matches names ignoring surrounding and inner whitespace", () => {
+    expect(ownerOrg(base, "  مشاري   العتيبي  ")).toBe("وزارة المالية")
+  })
+
+  it("matches despite a leading honorific (Saudi context)", () => {
+    expect(ownerOrg(base, "م. مشاري العتيبي")).toBe("وزارة المالية")
+    expect(ownerOrg(base, "الدكتور مشاري العتيبي")).toBe("وزارة المالية")
+  })
+
+  it("matches despite diacritics and alef-variant spelling", () => {
+    const m: Minutes = { ...base, attendees: [{ name: "أحمد الغامدي", org: "سابك" }] }
+    expect(ownerOrg(m, "احمد الغامدي")).toBe("سابك") // bare alef vs hamza-alef
+    expect(ownerOrg(m, "أَحْمَد الغامدي")).toBe("سابك") // tashkeel
   })
 })
 
@@ -105,6 +142,16 @@ describe("toMarkdown", () => {
     expect(md).toContain("| إعداد عرض الأجندة | هيئة الاتصالات وتقنية المعلومات | 2026-06-10 |")
     // مشاري's task owner is a dash (his name is never the owner), not "مشاري العتيبي".
     expect(md).toContain("| تعديل ملف الإكسل | — | — |")
+  })
+
+  it("escapes pipes in cells so they survive a parse→serialize→parse round-trip", () => {
+    const m = parseMinutes(`## نتائج الاجتماع
+| المهام/ التوصيات | المسؤول | التاريخ المستهدف |
+| --- | --- | --- |
+| a \\| b | مشاري | — |`)
+    const md = toMarkdown(m)
+    expect(md).toContain("a \\| b")
+    expect(parseMinutes(md).outcomes[0].task).toBe("a | b")
   })
 
   it("round-trips the meta, attendees, and discussion through markdown", () => {

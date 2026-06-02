@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from meeting_minutes.prompt import (
+    WINDOW_SYSTEM_PROMPT,
     build_synthesis_prompt,
     build_system_prompt,
     build_user_prompt,
@@ -51,6 +52,11 @@ class TestSystemPrompt:
     def test_requires_consistent_names_across_tables(self):
         result = build_system_prompt(title="t", date="d")
         assert "نفس صيغة الاسم بالضبط" in result
+
+    def test_requires_pipe_escaping_in_table_cells(self):
+        result = build_system_prompt(title="t", date="d")
+        assert "مهرّبة" in result
+        assert "\\|" in result
 
     def test_demands_detailed_discussion_points(self):
         result = build_system_prompt(title="t", date="d")
@@ -102,3 +108,15 @@ class TestWindowUser:
         result = build_window_user(notes="ميزانية", transcript="[0:12] x")
         assert "priority_notes" in result
         assert "ميزانية" in result
+
+
+class TestWindowSystemPrompt:
+    """The map step must agree with the synthesis contract: owner = PERSON name,
+    not the organization (the app maps the name to a الجهة downstream)."""
+
+    def test_map_step_emits_person_name_not_org(self):
+        # The old, contradictory instruction ("الجهة/الشركة المسؤولة (لا اسم شخص)")
+        # would put an org in the «المسؤول» column and break the name→org lookup.
+        assert "لا اسم شخص" not in WINDOW_SYSTEM_PROMPT
+        assert "اسم الشخص المكلّف" in WINDOW_SYSTEM_PROMPT
+        assert "لا الجهة" in WINDOW_SYSTEM_PROMPT

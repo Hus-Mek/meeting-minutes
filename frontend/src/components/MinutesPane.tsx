@@ -111,7 +111,16 @@ function ResultDoc({ minutes, title }: ResultDocProps) {
     win.document.write(buildStandaloneHtml(body, docTitle))
     win.document.close()
     win.focus()
-    setTimeout(() => win.print(), 500) // let web fonts load, then "Save as PDF"
+    // Print once the web fonts have actually loaded (Arabic needs Amiri, not a
+    // serif fallback). The timer is a safety net if fonts.ready never settles.
+    let printed = false
+    const printOnce = () => {
+      if (printed) return
+      printed = true
+      win.print()
+    }
+    setTimeout(printOnce, 2000)
+    win.document.fonts.ready.then(printOnce, printOnce)
   }
 
   return (
@@ -145,7 +154,7 @@ function ResultDoc({ minutes, title }: ResultDocProps) {
           Fill each person's الجهة in قائمة الحضور — the المسؤول column updates automatically.
         </p>
       )}
-      <div className="overflow-y-auto px-8 py-10 sm:px-12">
+      <div className="print-area overflow-y-auto px-8 py-10 sm:px-12">
         <DefaultTemplate minutes={model} editable={editing} onChange={setModel} />
       </div>
     </div>
