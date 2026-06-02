@@ -19,7 +19,9 @@ const DEFAULT_OPTIONS: MinutesOptions = {
   notes: "",
   title: "",
   date: today(),
-  includeActions: true,
+  time: "",
+  location: "",
+  attendees: "",
   backend: "groq",
   model: "",
   speakerKey: "speaker",
@@ -28,6 +30,9 @@ const DEFAULT_OPTIONS: MinutesOptions = {
   textKey: "text",
   speakerMap: "",
 }
+
+// Speakers that are not real attendees and should not seed the roster.
+const NON_ATTENDEES = new Set(["Unidentified Speaker", "Speaker", ""])
 
 export default function App() {
   const [file, setFile] = useState<File | null>(null)
@@ -52,7 +57,21 @@ export default function App() {
     setInspectError(null)
     inspectTranscript(file, { speakerKey, startKey, endKey, textKey })
       .then((result) => {
-        if (!cancelled) setInspect(result)
+        if (cancelled) return
+        setInspect(result)
+        // Hybrid prefill: seed the roster from speakers (you add organizations),
+        // and the title from the detected header — only when those fields are empty.
+        setOptions((prev) => {
+          const patch: Partial<MinutesOptions> = {}
+          if (!prev.attendees.trim()) {
+            const roster = result.speakers
+              .filter((s) => !NON_ATTENDEES.has(s))
+              .join("\n")
+            if (roster) patch.attendees = roster
+          }
+          if (!prev.title.trim() && result.detected.title) patch.title = result.detected.title
+          return Object.keys(patch).length ? { ...prev, ...patch } : prev
+        })
       })
       .catch((err: unknown) => {
         if (!cancelled) {

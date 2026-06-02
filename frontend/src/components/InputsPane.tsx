@@ -3,7 +3,6 @@ import { Dropzone } from "@/components/Dropzone"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
-import { Switch } from "@/components/ui/switch"
 import {
   Accordion,
   AccordionContent,
@@ -21,6 +20,8 @@ interface InputsPaneProps {
   onChange: (patch: Partial<MinutesOptions>) => void
 }
 
+const SECTION_LABEL = "text-xs font-semibold uppercase tracking-wide text-muted-foreground"
+
 export function InputsPane({
   file,
   onSelectFile,
@@ -33,9 +34,7 @@ export function InputsPane({
   return (
     <div className="flex flex-col gap-6">
       <section className="flex flex-col gap-2">
-        <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Transcript
-        </Label>
+        <Label className={SECTION_LABEL}>Transcript</Label>
         <Dropzone
           file={file}
           onSelect={onSelectFile}
@@ -46,81 +45,98 @@ export function InputsPane({
       </section>
 
       <section className="flex flex-col gap-2">
-        <Label htmlFor="notes" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-          Notes
+        <Label htmlFor="title" className={SECTION_LABEL}>
+          عنوان الاجتماع · Title
+        </Label>
+        <Input
+          id="title"
+          dir="auto"
+          value={options.title}
+          onChange={(e) => onChange({ title: e.target.value })}
+          placeholder="اجتماع متابعة…"
+          className="bg-card"
+        />
+      </section>
+
+      <section className="grid grid-cols-3 gap-3">
+        <LabeledInput
+          id="date"
+          label="التاريخ · Date"
+          value={options.date}
+          onChange={(v) => onChange({ date: v })}
+          placeholder="11/5/2026"
+        />
+        <LabeledInput
+          id="time"
+          label="الوقت · Time"
+          value={options.time}
+          onChange={(v) => onChange({ time: v })}
+          placeholder="11:30–12:30"
+        />
+        <LabeledInput
+          id="location"
+          label="الموقع · Location"
+          value={options.location}
+          onChange={(v) => onChange({ location: v })}
+          placeholder="عن بعد"
+          rtl
+        />
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <Label htmlFor="attendees" className={SECTION_LABEL}>
+          قائمة الحضور · Attendees
         </Label>
         <Textarea
-          id="notes"
-          value={options.notes}
-          onChange={(e) => onChange({ notes: e.target.value })}
-          placeholder="Your rough notes — what mattered, decisions, owners. The transcript fills in the detail."
-          className="min-h-32 resize-y bg-card font-sans text-sm leading-relaxed"
+          id="attendees"
+          dir="auto"
+          value={options.attendees}
+          onChange={(e) => onChange({ attendees: e.target.value })}
+          placeholder={"مشاري الزنبقي — هيئة الحكومة الرقمية\nمحمد جركس — شركة هوّز"}
+          className="min-h-24 resize-y bg-card text-sm leading-relaxed"
         />
         <p className="text-xs text-muted-foreground">
-          The spine: these set which topics matter and how they're weighted.
+          Auto-filled from speakers — add each one's الجهة (organization). One per line.
         </p>
       </section>
 
-      <section className="grid grid-cols-2 gap-3">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="title" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Title
-          </Label>
-          <Input
-            id="title"
-            value={options.title}
-            onChange={(e) => onChange({ title: e.target.value })}
-            placeholder="Weekly Sync"
-            className="bg-card"
-          />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="date" className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            Date
-          </Label>
-          <Input
-            id="date"
-            type="date"
-            value={options.date}
-            onChange={(e) => onChange({ date: e.target.value })}
-            className="bg-card"
-          />
-        </div>
-      </section>
-
-      <div className="flex items-center justify-between rounded-md border border-border bg-card px-3.5 py-3">
-        <div>
-          <Label htmlFor="actions" className="text-sm font-medium text-foreground">
-            Decisions & action items
-          </Label>
-          <p className="text-xs text-muted-foreground">Append owners, decisions, and due dates.</p>
-        </div>
-        <Switch
-          id="actions"
-          checked={options.includeActions}
-          onCheckedChange={(v) => onChange({ includeActions: v })}
+      <section className="flex flex-col gap-2">
+        <Label htmlFor="notes" className={SECTION_LABEL}>
+          ملاحظات · Notes
+        </Label>
+        <Textarea
+          id="notes"
+          dir="auto"
+          value={options.notes}
+          onChange={(e) => onChange({ notes: e.target.value })}
+          placeholder="ملاحظاتك حول ما يهم والقرارات — النص يملأ التفاصيل."
+          className="min-h-28 resize-y bg-card text-sm leading-relaxed"
         />
-      </div>
+        <p className="text-xs text-muted-foreground">
+          The spine: sets which points matter and how they're weighted.
+        </p>
+      </section>
 
       <Accordion type="single" collapsible className="border-t border-border">
         <AccordionItem value="advanced" className="border-b-0">
-          <AccordionTrigger className="text-xs font-semibold uppercase tracking-wide text-muted-foreground hover:no-underline">
+          <AccordionTrigger className={`${SECTION_LABEL} hover:no-underline`}>
             Advanced
           </AccordionTrigger>
           <AccordionContent className="flex flex-col gap-4 pt-1">
+            <p className="text-xs text-muted-foreground">JSON transcripts only — field mapping:</p>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Speaker key" value={options.speakerKey} onChange={(v) => onChange({ speakerKey: v })} />
-              <Field label="Text key" value={options.textKey} onChange={(v) => onChange({ textKey: v })} />
-              <Field label="Start key" value={options.startKey} onChange={(v) => onChange({ startKey: v })} />
-              <Field label="End key" value={options.endKey} onChange={(v) => onChange({ endKey: v })} />
+              <MonoField label="Speaker key" value={options.speakerKey} onChange={(v) => onChange({ speakerKey: v })} />
+              <MonoField label="Text key" value={options.textKey} onChange={(v) => onChange({ textKey: v })} />
+              <MonoField label="Start key" value={options.startKey} onChange={(v) => onChange({ startKey: v })} />
+              <MonoField label="End key" value={options.endKey} onChange={(v) => onChange({ endKey: v })} />
             </div>
-            <Field
+            <MonoField
               label="Speaker map"
               value={options.speakerMap}
               onChange={(v) => onChange({ speakerMap: v })}
               placeholder="SPEAKER_00=Alice, SPEAKER_01=Bob"
             />
-            <Field
+            <MonoField
               label="Model (optional)"
               value={options.model}
               onChange={(v) => onChange({ model: v })}
@@ -133,14 +149,41 @@ export function InputsPane({
   )
 }
 
-interface FieldProps {
+interface LabeledInputProps {
+  id: string
+  label: string
+  value: string
+  onChange: (value: string) => void
+  placeholder?: string
+  rtl?: boolean
+}
+
+function LabeledInput({ id, label, value, onChange, placeholder, rtl }: LabeledInputProps) {
+  return (
+    <div className="flex flex-col gap-2">
+      <Label htmlFor={id} className={SECTION_LABEL}>
+        {label}
+      </Label>
+      <Input
+        id={id}
+        dir={rtl ? "auto" : undefined}
+        value={value}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+        className="bg-card"
+      />
+    </div>
+  )
+}
+
+interface MonoFieldProps {
   label: string
   value: string
   onChange: (value: string) => void
   placeholder?: string
 }
 
-function Field({ label, value, onChange, placeholder }: FieldProps) {
+function MonoField({ label, value, onChange, placeholder }: MonoFieldProps) {
   const id = `f-${label.replace(/\s+/g, "-").toLowerCase()}`
   return (
     <div className="flex flex-col gap-1.5">

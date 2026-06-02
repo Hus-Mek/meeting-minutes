@@ -61,6 +61,47 @@ class TestInspect:
         assert resp.json()["speakers"] == ["A"]
 
 
+TEAMS_TEXT = (
+    "اجتماع تجريبي\nThu, May 14, 2026\n\n"
+    "0:05 - مشاري\nمرحبا بالجميع.\n\n"
+    "1:20 - عبادة\nاستعرضت المصفوفة ومراحلها.\n"
+)
+
+
+class TestTeamsTextFormat:
+    def test_inspect_parses_teams_text_and_sniffs_header(self, client):
+        resp = client.post(
+            "/api/inspect",
+            files={"transcript": ("meeting.txt", TEAMS_TEXT.encode(), "text/plain")},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["segment_count"] == 2
+        assert "مشاري" in body["speakers"]
+        assert body["detected"]["title"] == "اجتماع تجريبي"
+
+    def test_minutes_from_teams_text_with_metadata(self, client):
+        resp = client.post(
+            "/api/minutes",
+            files={"transcript": ("meeting.txt", TEAMS_TEXT.encode(), "text/plain")},
+            data={
+                "title": "اجتماع",
+                "date": "11/5/2026",
+                "time": "11:30–12:30",
+                "location": "عن بعد",
+                "attendees": "مشاري — هيئة الحكومة الرقمية",
+            },
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "##" in body["minutes"]
+        assert body["meta"]["segments"] == 2
+
+    def test_inspect_json_has_empty_detected(self, client):
+        resp = client.post("/api/inspect", files={"transcript": _transcript_file()})
+        assert resp.json()["detected"] == {"title": "", "date": ""}
+
+
 class TestMinutes:
     def test_happy_path(self, client):
         resp = client.post(

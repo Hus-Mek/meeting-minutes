@@ -2,8 +2,8 @@
 
 Example:
     python -m meeting_minutes.cli \\
-        --transcript meeting.json --notes notes.md --out minutes.md \\
-        --title "Weekly Sync" --date 2026-06-01
+        --transcript meeting.txt --notes notes.md --out minutes.md \\
+        --title "اجتماع المتابعة" --date 11/5/2026 --location "عن بعد"
 """
 
 from __future__ import annotations
@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import datetime as _dt
 import sys
+from pathlib import Path
 
 from .transcript import FieldMap
 from .minutes import generate_minutes_from_files, parse_speaker_map as _parse_speaker_map
@@ -19,11 +20,11 @@ from .minutes import generate_minutes_from_files, parse_speaker_map as _parse_sp
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="meeting-minutes",
-        description="Generate topic-by-topic meeting minutes from diarized "
-        "transcript JSON plus human notes.",
+        description="Generate formal Arabic meeting minutes (محضر اجتماع) from a "
+        "transcript (Teams text or diarized JSON) plus notes.",
     )
-    parser.add_argument("--transcript", required=True, help="Path to diarized transcript JSON")
-    parser.add_argument("--notes", required=True, help="Path to human notes (md/txt)")
+    parser.add_argument("--transcript", required=True, help="Transcript file (Teams text or JSON)")
+    parser.add_argument("--notes", required=True, help="Path to notes (md/txt); may be empty")
     parser.add_argument("--out", required=True, help="Path to write the minutes markdown")
     parser.add_argument("--title", default="Meeting", help="Meeting title for the header")
     parser.add_argument(
@@ -31,6 +32,14 @@ def build_parser() -> argparse.ArgumentParser:
         default=_dt.date.today().isoformat(),
         help="Meeting date for the header (default: today)",
     )
+    parser.add_argument("--time", default="", help="Meeting time for the header, e.g. '11:30–12:30'")
+    parser.add_argument("--location", default="", help="Meeting location, e.g. 'عن بعد'")
+    parser.add_argument(
+        "--attendees",
+        default="",
+        help="Roster, one 'Name — Organization' per line (or use --attendees-file)",
+    )
+    parser.add_argument("--attendees-file", default=None, help="Path to a roster file")
     parser.add_argument(
         "--backend",
         default="groq",
@@ -42,12 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Model id (default: the chosen backend's default model)",
     )
-    parser.add_argument(
-        "--no-actions",
-        action="store_true",
-        help="Suppress the Decisions & Action Items section (included by default)",
-    )
-    # Field mapping for non-default diarizer schemas (no need to edit source).
+    # Field mapping for non-default diarizer schemas (JSON transcripts only).
     parser.add_argument("--speaker-key", default="speaker", help="JSON key for the speaker label")
     parser.add_argument("--start-key", default="start", help="JSON key for the start timestamp")
     parser.add_argument("--end-key", default="end", help="JSON key for the end timestamp")
@@ -71,15 +75,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     try:
         speaker_map = _parse_speaker_map(args.speaker_map)
+        attendees = args.attendees
+        if args.attendees_file:
+            attendees = Path(args.attendees_file).read_text(encoding="utf-8")
         out = generate_minutes_from_files(
             transcript_path=args.transcript,
             notes_path=args.notes,
             out_path=args.out,
             title=args.title,
             date=args.date,
+            time=args.time,
+            location=args.location,
+            attendees=attendees,
             backend=args.backend,
             model=args.model,
-            include_actions=not args.no_actions,
             fields=fields,
             speaker_map=speaker_map,
         )

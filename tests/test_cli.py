@@ -25,7 +25,9 @@ class TestParser:
                 "--title", "Sync",
                 "--date", "2026-06-01",
                 "--backend", "groq",
-                "--no-actions",
+                "--time", "11:30–12:30",
+                "--location", "عن بعد",
+                "--attendees", "مشاري — هيئة",
                 "--speaker-key", "spk",
                 "--start-key", "begin",
                 "--speaker-map", "SPEAKER_00=Alice",
@@ -33,7 +35,9 @@ class TestParser:
             ]
         )
         assert args.transcript == "t.json"
-        assert args.no_actions is True
+        assert args.time == "11:30–12:30"
+        assert args.location == "عن بعد"
+        assert args.attendees == "مشاري — هيئة"
         assert args.speaker_key == "spk"
         assert args.start_key == "begin"
         assert args.debug is True
@@ -75,7 +79,7 @@ class TestMain:
         assert code == 0
         assert "wrote o.md" in capsys.readouterr().out
         assert captured["transcript_path"] == "t.json"
-        assert captured["include_actions"] is True  # on by default
+        assert captured["attendees"] == ""  # default empty roster
         assert captured["fields"].speaker == "speaker"
 
     def test_failure_returns_one_with_message(self, monkeypatch, capsys):

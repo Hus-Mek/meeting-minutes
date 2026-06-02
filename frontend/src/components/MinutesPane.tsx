@@ -123,7 +123,7 @@ function ResultDoc({ minutes, title }: ResultDocProps) {
         </Button>
       </div>
       <div className="overflow-y-auto px-8 py-10 sm:px-12">
-        <article className="print-area minutes-doc mx-auto">
+        <article dir="auto" className="print-area minutes-doc mx-auto">
           <Markdown remarkPlugins={[remarkGfm]}>{minutes}</Markdown>
         </article>
       </div>

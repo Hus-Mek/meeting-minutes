@@ -11,7 +11,9 @@ export interface MinutesOptions extends FieldKeys {
   notes: string
   title: string
   date: string
-  includeActions: boolean
+  time: string
+  location: string
+  attendees: string
   backend: string
   model: string
   speakerMap: string
@@ -21,6 +23,7 @@ export interface InspectResult {
   segment_count: number
   speakers: string[]
   duration: string
+  detected: { title: string; date: string }
 }
 
 export interface MinutesResult {
@@ -42,9 +45,11 @@ export function buildMinutesFormData(file: File, opts: MinutesOptions): FormData
   form.append("notes", opts.notes)
   form.append("title", opts.title || "Meeting")
   form.append("date", opts.date)
+  form.append("time", opts.time)
+  form.append("location", opts.location)
+  form.append("attendees", opts.attendees)
   form.append("backend", opts.backend)
   form.append("model", opts.model)
-  form.append("include_actions", String(opts.includeActions))
   form.append("speaker_map", opts.speakerMap)
   appendFieldKeys(form, opts)
   return form

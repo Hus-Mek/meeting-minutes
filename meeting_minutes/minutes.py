@@ -160,20 +160,24 @@ def _generate_map_reduce(
     segments: tuple[Segment, ...],
     title: str,
     date: str,
+    time: str,
+    location: str,
+    attendees: str,
     model: str,
-    include_actions: bool,
     budget: int,
 ) -> str:
     summaries = _summarize_windows(
         client, segments=segments, notes=notes, model=model, budget=budget
     )
     system = prompt.build_system_prompt(
-        title=title, date=date, include_actions=include_actions, for_synthesis=True
+        title=title, date=date, time=time, location=location, for_synthesis=True
     )
     summaries = _fold_summaries(
         client, summaries, notes=notes, synthesis_system=system, model=model, budget=budget
     )
-    user = prompt.build_synthesis_prompt(notes=notes, summaries="\n\n".join(summaries))
+    user = prompt.build_synthesis_prompt(
+        notes=notes, summaries="\n\n".join(summaries), attendees=attendees
+    )
     return client.generate(system, user, model=model).strip()
 
 
@@ -185,20 +189,22 @@ def generate_minutes(
     date: str,
     client: LlmClient,
     model: str,
-    include_actions: bool = True,
+    time: str = "",
+    location: str = "",
+    attendees: str = "",
     input_token_budget: int | None = None,
 ) -> str:
     """Produce minutes markdown, choosing single-pass vs map-reduce by real budget."""
     if not segments:
         raise ValueError(
-            "transcript contains no segments — check the file and the field mapping "
-            "(--speaker-key/--start-key/--end-key/--text-key)"
+            "transcript contains no segments — check the file (Teams text or diarized "
+            "JSON) and, for JSON, the field mapping"
         )
     budget = input_token_budget if input_token_budget is not None else max_input_tokens(model)
 
     transcript_text = format_for_prompt(segments)  # computed once, reused below
-    system = prompt.build_system_prompt(title=title, date=date, include_actions=include_actions)
-    user = prompt.build_user_prompt(notes=notes, transcript=transcript_text)
+    system = prompt.build_system_prompt(title=title, date=date, time=time, location=location)
+    user = prompt.build_user_prompt(notes=notes, transcript=transcript_text, attendees=attendees)
 
     if _budget_tokens(system + user) <= budget:
         minutes = client.generate(system, user, model=model).strip()
@@ -209,8 +215,10 @@ def generate_minutes(
             segments=segments,
             title=title,
             date=date,
+            time=time,
+            location=location,
+            attendees=attendees,
             model=model,
-            include_actions=include_actions,
             budget=budget,
         )
     _assert_well_formed(minutes)
@@ -254,10 +262,12 @@ def build_minutes(
     notes: str,
     title: str,
     date: str,
+    time: str = "",
+    location: str = "",
+    attendees: str = "",
     speaker_map: dict[str, str] | None = None,
     backend: str = "groq",
     model: str | None = None,
-    include_actions: bool = True,
     client: LlmClient | None = None,
 ) -> str:
     """In-memory core: rename speakers, resolve model/client, generate minutes.
@@ -274,9 +284,11 @@ def build_minutes(
         notes=notes,
         title=title,
         date=date,
+        time=time,
+        location=location,
+        attendees=attendees,
         client=llm,
         model=resolved_model,
-        include_actions=include_actions,
     )
 
 
@@ -287,9 +299,11 @@ def generate_minutes_from_files(
     out_path: str | Path,
     title: str,
     date: str,
+    time: str = "",
+    location: str = "",
+    attendees: str = "",
     backend: str = "groq",
     model: str | None = None,
-    include_actions: bool = True,
     fields: FieldMap | None = None,
     speaker_map: dict[str, str] | None = None,
     client: LlmClient | None = None,
@@ -302,10 +316,12 @@ def generate_minutes_from_files(
         notes=notes,
         title=title,
         date=date,
+        time=time,
+        location=location,
+        attendees=attendees,
         speaker_map=speaker_map,
         backend=backend,
         model=model,
-        include_actions=include_actions,
         client=client,
     )
     out = Path(out_path)

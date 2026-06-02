@@ -121,7 +121,7 @@ class TestGenerateMinutes:
         assert result == "## Merged\nDone."
         assert "<segment_summaries>" in fake.calls[-1]["user"]
         # synthesis system must ground in summaries, not the transcript
-        assert "PER-SEGMENT SUMMARIES" in fake.calls[-1]["system"]
+        assert "SUMMARIES" in fake.calls[-1]["system"]
 
     def test_rejects_malformed_output_without_heading(self):
         fake = FakeLlm("just prose, no heading")
@@ -139,21 +139,16 @@ class TestGenerateMinutes:
                 segments=segs, notes="n", title="T", date="D", client=fake, model=MODEL
             )
 
-    def test_include_actions_propagates_to_system_prompt(self):
+    def test_metadata_flows_into_header_and_roster(self):
         fake = FakeLlm()
         generate_minutes(
-            segments=_segments(("A", 0, 1, "x")), notes="n", title="T", date="D",
-            client=fake, model=MODEL, include_actions=True,
+            segments=_segments(("A", 0, 1, "x")), notes="n", title="T", date="11/5/2026",
+            time="11:30–12:30", location="عن بعد", attendees="مشاري — هيئة",
+            client=fake, model=MODEL,
         )
-        assert "Decisions & Action Items" in fake.calls[0]["system"]
-
-    def test_actions_off_omits_section(self):
-        fake = FakeLlm()
-        generate_minutes(
-            segments=_segments(("A", 0, 1, "x")), notes="n", title="T", date="D",
-            client=fake, model=MODEL, include_actions=False,
-        )
-        assert "Decisions & Action Items" not in fake.calls[0]["system"]
+        # date/time/location are literal in the system contract; roster in the user prompt
+        assert "| 11/5/2026 | 11:30–12:30 | عن بعد |" in fake.calls[0]["system"]
+        assert "مشاري — هيئة" in fake.calls[0]["user"]
 
 
 class TestFoldSummaries:

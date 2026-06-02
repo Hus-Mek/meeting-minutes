@@ -5,7 +5,9 @@ const OPTIONS: MinutesOptions = {
   notes: "budget",
   title: "Weekly Sync",
   date: "2026-06-01",
-  includeActions: true,
+  time: "11:30–12:30",
+  location: "عن بعد",
+  attendees: "مشاري — هيئة",
   backend: "groq",
   model: "",
   speakerKey: "speaker",
@@ -28,9 +30,11 @@ describe("buildMinutesFormData", () => {
     expect(form.get("speaker_map")).toBe("SPEAKER_00=Alice")
   })
 
-  it("serializes include_actions as a string boolean", () => {
-    const form = buildMinutesFormData(file(), { ...OPTIONS, includeActions: false })
-    expect(form.get("include_actions")).toBe("false")
+  it("includes the metadata fields (time, location, attendees)", () => {
+    const form = buildMinutesFormData(file(), OPTIONS)
+    expect(form.get("time")).toBe("11:30–12:30")
+    expect(form.get("location")).toBe("عن بعد")
+    expect(form.get("attendees")).toBe("مشاري — هيئة")
   })
 
   it("falls back to 'Meeting' when title is empty", () => {

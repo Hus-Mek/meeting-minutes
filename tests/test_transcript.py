@@ -13,8 +13,20 @@ from meeting_minutes.transcript import (
     estimate_tokens,
     format_for_prompt,
     load_transcript,
+    looks_like_json,
+    parse_any,
+    parse_text_transcript,
     parse_transcript,
     seconds_to_hms,
+    sniff_text_header,
+)
+
+TEAMS = (
+    "اجتماع تجريبي\n"
+    "Thu, May 14, 2026\n\n"
+    "0:05 - مشاري\nمرحبا بالجميع.\n\n"
+    "1:20 - عبادة\nاستعرضت المصفوفة\nومراحلها.\n\n"
+    "1:02:03 - Unidentified Speaker\nشكرًا.\n"
 )
 
 
@@ -148,3 +160,54 @@ class TestFormatForPrompt:
 class TestEstimateTokens:
     def test_approximates_four_chars_per_token(self):
         assert estimate_tokens("a" * 400) == 100
+
+
+class TestParseTextTranscript:
+    def test_parses_cues_ignoring_header_lines(self):
+        segs = parse_text_transcript(TEAMS)
+        assert len(segs) == 3
+        assert segs[0].speaker == "مشاري"
+        assert segs[0].start_seconds == 5.0
+        assert segs[0].text == "مرحبا بالجميع."
+
+    def test_joins_multiline_text(self):
+        segs = parse_text_transcript(TEAMS)
+        assert segs[1].text == "استعرضت المصفوفة ومراحلها."
+
+    def test_end_is_next_cue_start(self):
+        segs = parse_text_transcript(TEAMS)
+        assert segs[0].end_seconds == 80.0  # 1:20
+
+    def test_parses_hms_timestamp(self):
+        segs = parse_text_transcript(TEAMS)
+        assert segs[2].start_seconds == 1 * 3600 + 2 * 60 + 3
+
+    def test_raises_when_no_cues(self):
+        with pytest.raises(ValueError, match="M:SS"):
+            parse_text_transcript("just some prose with no timestamps")
+
+
+class TestParseAny:
+    def test_routes_json(self):
+        segs = parse_any('[{"speaker": "A", "start": 0, "end": 1, "text": "hi"}]')
+        assert segs[0].speaker == "A"
+
+    def test_routes_text(self):
+        segs = parse_any(TEAMS)
+        assert segs[0].speaker == "مشاري"
+
+    def test_invalid_json_reports_clearly(self):
+        with pytest.raises(ValueError, match="looks like JSON"):
+            parse_any("[not json")
+
+
+class TestSniffers:
+    def test_looks_like_json(self):
+        assert looks_like_json('  [{"a": 1}]')
+        assert looks_like_json('{"a": 1}')
+        assert not looks_like_json("0:05 - مشاري")
+
+    def test_sniff_text_header(self):
+        header = sniff_text_header(TEAMS)
+        assert header["title"] == "اجتماع تجريبي"
+        assert header["date"] == "Thu, May 14, 2026"

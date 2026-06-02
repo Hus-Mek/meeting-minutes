@@ -4,6 +4,7 @@
 @import "@fontsource-variable/fraunces";
 @import "@fontsource-variable/inter";
 @import "@fontsource-variable/source-serif-4";
+@import "@fontsource/amiri";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -47,6 +48,7 @@
     --paper: #fbfbf8;
     --line: #e6e3da;
     --oxide: #b0411e;
+    --oxide-soft: #f3e4dc;
 
     --background: #fbfbf8;
     --foreground: #1a1a17;
@@ -73,6 +75,7 @@
     --paper: #14130f;
     --line: rgba(255, 255, 255, 0.1);
     --oxide: #d86a43;
+    --oxide-soft: #2a2620;
 
     --background: #14130f;
     --foreground: #ece9e0;
@@ -114,21 +117,34 @@
     }
 }
 
-/* The rendered minutes — a real document, not a chat bubble. */
+/* The rendered minutes — a real document, not a chat bubble.
+   Latin uses Source Serif; Arabic falls through to Amiri (naskh, document-grade). */
 .minutes-doc {
-    font-family: var(--font-serif);
+    font-family: var(--font-serif), "Amiri", "Times New Roman", serif;
     color: var(--foreground);
     font-size: 1.0625rem;
-    line-height: 1.7;
-    max-width: 68ch;
+    line-height: 1.8;
+    max-width: 72ch;
+}
+/* Arabic content (dir=rtl resolved from dir="auto") reads a touch larger/looser. */
+.minutes-doc:dir(rtl),
+.minutes-doc [dir="rtl"] {
+    font-size: 1.15rem;
+    line-height: 1.95;
 }
 .minutes-doc h1 {
-    font-family: var(--font-heading);
+    font-family: var(--font-heading), "Amiri", serif;
     font-weight: 600;
     font-size: 1.9rem;
-    line-height: 1.15;
+    line-height: 1.25;
     letter-spacing: -0.01em;
     margin: 0 0 1.5rem;
+}
+.minutes-doc:dir(rtl) h1,
+.minutes-doc:dir(rtl) h2,
+.minutes-doc:dir(rtl) h3 {
+    font-family: "Amiri", var(--font-heading), serif;
+    letter-spacing: 0;
 }
 .minutes-doc h2 {
     font-family: var(--font-heading);
@@ -176,6 +192,31 @@
     background: var(--muted);
     padding: 0.05em 0.35em;
     border-radius: 4px;
+}
+/* Tables — the attendees roster (الحضور) and the outcomes/action items (النتائج). */
+.minutes-doc table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 0.75rem 0 1.5rem;
+    font-size: 0.95em;
+}
+.minutes-doc thead th {
+    background: var(--oxide-soft, #f3e4dc);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 0.85em;
+    text-align: start;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--line);
+}
+.minutes-doc tbody td {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--line);
+    vertical-align: top;
+}
+.minutes-doc tbody tr:nth-child(even) {
+    background: color-mix(in oklab, var(--muted) 45%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -1,18 +1,33 @@
 # meeting-minutes
 
-Generate clean **topic-by-topic** meeting minutes from a diarized transcript JSON
-plus a participant's rough notes.
+Generate a formal Arabic **محضر اجتماع** from a meeting transcript plus notes.
+
+## Output structure
+
+Markdown modelled on a formal minutes template:
+
+- **Header** — التاريخ / الوقت / الموقع (date / time / location)
+- **## قائمة الحضور** — attendees table (الاسم | الجهة)
+- **## نقاط نقاش الاجتماع** — ملخص الاجتماع + bulleted discussion points
+- **## نتائج الاجتماع** — outcomes table (المهام/التوصيات | المسؤول | التاريخ المستهدف)
 
 ## How it works
 
-The generator treats the two inputs differently:
+The generator treats the inputs differently:
 
-- **Notes are the spine** — they decide *which* topics matter and how to weight/order them.
-- **Transcript is the ground truth** — accurate names, numbers, decisions, and who said what.
+- **Notes are the spine** — they decide *which* points matter and how to weight them.
+- **Transcript is the ground truth** — accurate names, numbers, decisions, who said what.
+- **Attendees are hybrid** — names come from the transcript speakers; you supply each
+  one's organization (الجهة) and the date/time/location.
 
 When the sources conflict on a *fact*, the transcript wins; when they conflict on
 *emphasis*, the notes win. A typical meeting is summarised in a single LLM call;
 very long transcripts fall back to map-reduce (per-window summaries → synthesis).
+
+## Transcript formats (auto-detected)
+
+- **Teams/Zoom text export** — `M:SS - Speaker` followed by the spoken text.
+- **Diarized JSON** — a list of `speaker`/`start`/`end`/`text` segments (field-configurable).
 
 Two ways to use it: the **[CLI](#usage)** or the **[web GUI](#web-gui)**.
 
@@ -58,25 +73,25 @@ export GROQ_API_KEY=...   # default backend is Groq (Llama 3.3 70B)
 
 ```bash
 python -m meeting_minutes.cli \
-  --transcript meeting.json \
+  --transcript meeting.txt \
   --notes notes.md \
   --out minutes.md \
-  --title "Weekly Sync"        # --date defaults to today
+  --title "اجتماع المتابعة" --date 11/5/2026 \
+  --time "11:30–12:30" --location "عن بعد" \
+  --attendees-file roster.txt    # one "Name — Organization" per line
 ```
 
-A *Decisions & Action Items* section is included by default — pass `--no-actions`
-to drop it. `--backend {groq,claude,ollama}` and `--model <id>` swap the LLM
-(claude/ollama are stubs for now); `--debug` prints full tracebacks.
+`--backend {groq,claude,ollama}` and `--model <id>` swap the LLM (claude/ollama are
+stubs for now); `--debug` prints full tracebacks.
 
 Routing is **model-aware**: it sizes the full prompt against the model's real
 context window (128k for Llama 3.3 70B, minus reserved output) and automatically
 falls back to a bounded map-reduce for very long meetings.
 
-### Transcript format
+### JSON transcripts — field mapping
 
-A JSON list of diarized segments. Default keys are `speaker`, `start`, `end`,
-`text` (seconds). If your diarizer uses other names, pass them on the CLI — no
-need to edit source:
+For diarized JSON, default keys are `speaker`, `start`, `end`, `text` (seconds).
+If your tool uses other names, pass them on the CLI — no need to edit source:
 
 ```bash
 --speaker-key spk --start-key begin --end-key stop --text-key content

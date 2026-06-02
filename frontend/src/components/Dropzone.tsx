@@ -78,10 +78,10 @@ export function Dropzone({ file, onSelect, inspect, inspecting, inspectError }: 
         <span className="font-medium text-foreground">Drop transcript</span>
         <span className="text-muted-foreground"> or browse</span>
       </div>
-      <p className="text-xs text-muted-foreground">Diarized JSON · speaker, start, end, text</p>
+      <p className="text-xs text-muted-foreground">Teams/Zoom text export · or diarized JSON</p>
       <input
         type="file"
-        accept=".json,application/json"
+        accept=".txt,.json,.vtt,text/plain,application/json"
         className="sr-only"
         onChange={(e) => pick(e.target.files)}
       />

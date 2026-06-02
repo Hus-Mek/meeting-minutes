@@ -9,7 +9,6 @@ Run locally: ``python -m meeting_minutes.web`` then open http://localhost:8000
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Callable
 
@@ -25,8 +24,10 @@ from .transcript import (
     MAX_TRANSCRIPT_BYTES,
     FieldMap,
     Segment,
-    parse_transcript,
+    looks_like_json,
+    parse_any,
     seconds_to_hms,
+    sniff_text_header,
 )
 
 # A backend factory: name -> client. Injected so tests can swap in a fake.
@@ -53,16 +54,20 @@ def _fields(speaker_key: str, start_key: str, end_key: str, text_key: str) -> Fi
     return FieldMap(speaker=speaker_key, start=start_key, end=end_key, text=text_key)
 
 
-def _read_segments(raw: bytes, fields: FieldMap) -> tuple[Segment, ...]:
-    """Validate size, parse JSON, and coerce to Segments — as HTTP errors on failure."""
+def _decode(raw: bytes) -> str:
+    """Validate size and decode bytes — as HTTP errors on failure."""
     if len(raw) > MAX_TRANSCRIPT_BYTES:
         raise HTTPException(status_code=413, detail="transcript file is too large")
     try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail=f"transcript is not valid JSON: {exc}")
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="transcript must be UTF-8 text")
+
+
+def _read_segments(raw: bytes, fields: FieldMap) -> tuple[Segment, ...]:
+    """Decode + auto-detect (Teams text or diarized JSON) into Segments."""
     try:
-        return parse_transcript(data, fields=fields)
+        return parse_any(_decode(raw), fields=fields)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -80,8 +85,12 @@ async def inspect(
     end_key: str = Form("end"),
     text_key: str = Form("text"),
 ) -> dict:
-    """Parse only — power the pre-generation preview (counts, speakers, duration)."""
+    """Parse only — power the pre-generation preview (counts, speakers, duration).
+
+    For Teams text transcripts, also sniff a detected title/date to prefill the form.
+    """
     raw = await transcript.read()
+    text = _decode(raw)
     segments = _read_segments(raw, _fields(speaker_key, start_key, end_key, text_key))
     speakers = sorted({s.speaker for s in segments})
     if segments:
@@ -89,7 +98,13 @@ async def inspect(
         duration_hms = seconds_to_hms(max(0.0, duration))
     else:
         duration_hms = "00:00:00"
-    return {"segment_count": len(segments), "speakers": speakers, "duration": duration_hms}
+    detected = {"title": "", "date": ""} if looks_like_json(text) else sniff_text_header(text)
+    return {
+        "segment_count": len(segments),
+        "speakers": speakers,
+        "duration": duration_hms,
+        "detected": detected,
+    }
 
 
 @app.post("/api/minutes")
@@ -98,9 +113,11 @@ async def api_minutes(
     notes: str = Form(""),
     title: str = Form("Meeting"),
     date: str = Form(""),
+    time: str = Form(""),
+    location: str = Form(""),
+    attendees: str = Form(""),
     backend: str = Form("groq"),
     model: str = Form(""),
-    include_actions: bool = Form(True),
     speaker_key: str = Form("speaker"),
     start_key: str = Form("start"),
     end_key: str = Form("end"),
@@ -120,10 +137,12 @@ async def api_minutes(
             notes=notes,
             title=title,
             date=date,
+            time=time,
+            location=location,
+            attendees=attendees,
             speaker_map=smap or None,
             backend=backend,
             model=model or None,
-            include_actions=include_actions,
             client=client,
         )
     except OpenRouterGuardError as exc:
