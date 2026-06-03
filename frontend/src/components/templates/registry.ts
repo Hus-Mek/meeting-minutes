@@ -19,7 +19,7 @@ export interface TemplateDef {
 }
 
 export const TEMPLATES: readonly TemplateDef[] = [
-  { id: "default", name: "النموذج الافتراضي — محضر اجتماع", Component: DefaultTemplate },
+  { id: "default", name: "النموذج الافتراضي", Component: DefaultTemplate },
 ]
 
 export const DEFAULT_TEMPLATE_ID = TEMPLATES[0].id

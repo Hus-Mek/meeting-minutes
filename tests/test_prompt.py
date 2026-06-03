@@ -58,6 +58,11 @@ class TestSystemPrompt:
         assert "مهرّبة" in result
         assert "\\|" in result
 
+    def test_requires_arabic_names_with_saudi_transliteration(self):
+        result = build_system_prompt(title="t", date="d")
+        assert "أسماء الأشخاص بالعربية" in result
+        assert "النطق السعودي" in result
+
     def test_demands_detailed_discussion_points(self):
         result = build_system_prompt(title="t", date="d")
         assert "تفصيلية وشاملة" in result
