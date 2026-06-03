@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react"
-import { Loader2, ScrollText, Sparkles } from "lucide-react"
+import { Loader2, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import {
   generateMinutes,
@@ -118,9 +118,10 @@ export default function App() {
     <div className="flex h-screen flex-col bg-paper text-foreground">
       <header className="no-print flex h-14 shrink-0 items-center justify-between border-b border-line px-5">
         <div className="flex items-center gap-2.5">
-          <ScrollText className="size-5 text-oxide" aria-hidden />
-          <span className="font-heading text-base font-semibold tracking-tight">
-            Meeting Minutes
+          <img src="/hawaz-logo.svg" alt="Hawaz" className="h-6 w-auto dark:hidden" />
+          <img src="/hawaz-logo-cream.svg" alt="Hawaz" className="hidden h-6 w-auto dark:block" />
+          <span className="border-r border-line pr-2.5 text-base font-semibold tracking-tight text-foreground" dir="rtl">
+            محضر الاجتماعات
           </span>
         </div>
         <Button onClick={onGenerate} disabled={!canGenerate} className="gap-2">
