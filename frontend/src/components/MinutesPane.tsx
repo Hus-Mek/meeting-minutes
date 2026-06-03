@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { Check, Copy, Download, Eye, FileDown, FileText, Loader2, Pencil } from "lucide-react"
+import { Check, Copy, Download, Eye, FileDown, FileText, LayoutTemplate, Loader2, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { DefaultTemplate } from "@/components/templates/DefaultTemplate"
+import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
+import { DEFAULT_TEMPLATE_ID, getTemplate, TEMPLATES } from "@/components/templates/registry"
 import { buildStandaloneHtml } from "@/lib/minutesDom"
 import { parseMinutes, toMarkdown, type Minutes } from "@/lib/minutes"
 
@@ -98,10 +99,12 @@ function ResultDoc({ minutes, title, regenerating = false }: ResultDocProps) {
   const [model, setModel] = useState<Minutes>(() => parseMinutes(minutes))
   const [editing, setEditing] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID)
 
   // A new generation refreshes the content but preserves the orgs the user typed.
   useEffect(() => setModel((prev) => mergeOrgs(parseMinutes(minutes), prev)), [minutes])
 
+  const Template = getTemplate(templateId).Component
   const docTitle = title || model.title || "meeting"
 
   async function copy() {
@@ -121,7 +124,7 @@ function ResultDoc({ minutes, title, regenerating = false }: ResultDocProps) {
   }
 
   function exportPdf() {
-    const body = renderToStaticMarkup(<DefaultTemplate minutes={model} editable={false} />)
+    const body = renderToStaticMarkup(<Template minutes={model} editable={false} />)
     const win = window.open("", "_blank", "width=900,height=1200")
     if (!win) return
     win.document.open()
@@ -143,14 +146,34 @@ function ResultDoc({ minutes, title, regenerating = false }: ResultDocProps) {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-1.5 border-b border-line bg-paper/85 px-4 py-2.5 backdrop-blur">
-        <Button
-          variant={editing ? "secondary" : "ghost"}
-          size="sm"
-          onClick={() => setEditing((e) => !e)}
-        >
-          {editing ? <Eye className="size-4" /> : <Pencil className="size-4" />}
-          {editing ? "Done" : "Edit"}
-        </Button>
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Button
+            variant={editing ? "secondary" : "ghost"}
+            size="sm"
+            onClick={() => setEditing((e) => !e)}
+          >
+            {editing ? <Eye className="size-4" /> : <Pencil className="size-4" />}
+            {editing ? "Done" : "Edit"}
+          </Button>
+          <Select value={templateId} onValueChange={setTemplateId}>
+            <SelectTrigger
+              className="h-8 w-[190px] gap-1.5 bg-card text-xs"
+              aria-label="Template / القالب"
+            >
+              <LayoutTemplate className="size-3.5 shrink-0 opacity-60" aria-hidden />
+              <span className="truncate" dir="rtl">
+                {getTemplate(templateId).name}
+              </span>
+            </SelectTrigger>
+            <SelectContent>
+              {TEMPLATES.map((t) => (
+                <SelectItem key={t.id} value={t.id} className="text-xs" dir="rtl">
+                  {t.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
         <div className="flex items-center gap-1.5">
           <Button variant="ghost" size="sm" onClick={copy}>
             {copied ? <Check className="size-4 text-oxide" /> : <Copy className="size-4" />}
@@ -179,7 +202,7 @@ function ResultDoc({ minutes, title, regenerating = false }: ResultDocProps) {
         </p>
       )}
       <div className="print-area overflow-y-auto px-8 py-10 sm:px-12">
-        <DefaultTemplate minutes={model} editable={editing} onChange={setModel} />
+        <Template minutes={model} editable={editing} onChange={setModel} />
       </div>
     </div>
   )

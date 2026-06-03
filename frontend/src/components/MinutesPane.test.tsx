@@ -59,6 +59,13 @@ describe("MinutesPane", () => {
     expect(screen.getByRole("button", { name: /pdf/i })).toBeInTheDocument()
   })
 
+  it("shows a template picker in the result toolbar with the default template selected", () => {
+    render(<MinutesPane state="result" minutes={SAMPLE} title="x" />)
+    const picker = screen.getByRole("combobox", { name: /template/i })
+    expect(picker).toBeInTheDocument()
+    expect(picker).toHaveTextContent("النموذج الافتراضي")
+  })
+
   it("shows the assignee's organization in المسؤول, not their name", () => {
     render(<MinutesPane state="result" minutes={SAMPLE} title="x" />)
     // نورة's known الجهة surfaces as the owner of her task…
