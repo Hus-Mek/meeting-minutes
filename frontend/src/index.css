@@ -258,6 +258,42 @@
     font-size: 1.05rem;
     color: var(--foreground);
 }
+
+/* Brand palette of the formal محضر template — mirrors the .docx export so the
+   on-screen preview matches the downloaded file: teal header rows, grey # column,
+   blue section headings, flat white data cells (no zebra). */
+.tmpl-default {
+    --mm-teal: #00abaf;
+    --mm-grey: #d9d9d9;
+    --mm-blue: #0070b9;
+}
+.tmpl-default h2 {
+    color: var(--mm-blue);
+    border-bottom-color: color-mix(in oklab, var(--mm-blue) 30%, transparent);
+}
+.tmpl-default thead th {
+    background: var(--mm-teal);
+    color: #fff;
+    border-color: var(--mm-teal);
+}
+.tmpl-default tbody td {
+    border-color: var(--mm-grey);
+}
+.tmpl-default tbody tr:nth-child(even) {
+    background: transparent;
+}
+.tmpl-default tbody td.mm-num {
+    background: var(--mm-grey);
+    color: var(--foreground);
+    font-weight: 600;
+}
+.tmpl-default .mm-title {
+    background: transparent;
+    color: var(--mm-blue);
+}
+.tmpl-default li::marker {
+    color: var(--mm-teal);
+}
 .mm-edit {
     width: 100%;
     background: transparent;

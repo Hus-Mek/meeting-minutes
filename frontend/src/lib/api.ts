@@ -82,3 +82,43 @@ export async function generateMinutes(file: File, opts: MinutesOptions): Promise
   const form = buildMinutesFormData(file, opts)
   return unwrap<MinutesResult>(await fetch("/api/minutes", { method: "POST", body: form }))
 }
+
+export type DocxFormat = "docx" | "pdf"
+
+export interface DocxExportOptions {
+  template?: File | null // the user's own .docx template; falls back to the bundled one
+  format?: DocxFormat
+  filename?: string
+}
+
+/** Build the multipart body for /api/minutes/docx. Exported for unit testing. */
+export function buildDocxFormData(minutesMarkdown: string, opts: DocxExportOptions = {}): FormData {
+  const form = new FormData()
+  form.append("minutes", minutesMarkdown)
+  if (opts.template) form.append("template", opts.template)
+  form.append("format", opts.format ?? "docx")
+  form.append("filename", opts.filename || "minutes")
+  return form
+}
+
+/** Render minutes Markdown into a .docx/PDF on the server and return the file blob. */
+export async function exportMinutesDocx(
+  minutesMarkdown: string,
+  opts: DocxExportOptions = {},
+): Promise<Blob> {
+  const res = await fetch("/api/minutes/docx", {
+    method: "POST",
+    body: buildDocxFormData(minutesMarkdown, opts),
+  })
+  if (!res.ok) {
+    let message = `Export failed (${res.status})`
+    try {
+      const body = await res.json()
+      if (body?.error) message = body.error
+    } catch {
+      // non-JSON error body (e.g. a binary); keep the status-based message
+    }
+    throw new Error(message)
+  }
+  return res.blob()
+}

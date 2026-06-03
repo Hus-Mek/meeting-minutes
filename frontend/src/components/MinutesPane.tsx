@@ -1,10 +1,12 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState, type ChangeEvent } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
-import { Check, Copy, Download, Eye, FileDown, FileText, LayoutTemplate, Loader2, Pencil } from "lucide-react"
+import { toast } from "sonner"
+import { Check, Copy, Download, Eye, FileDown, FileText, FileType2, LayoutTemplate, Loader2, Paperclip, Pencil, X } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
 import { DEFAULT_TEMPLATE_ID, getTemplate, TEMPLATES } from "@/components/templates/registry"
+import { exportMinutesDocx } from "@/lib/api"
 import { buildStandaloneHtml } from "@/lib/minutesDom"
 import { parseMinutes, toMarkdown, type Minutes } from "@/lib/minutes"
 
@@ -100,6 +102,9 @@ function ResultDoc({ minutes, title, regenerating = false }: ResultDocProps) {
   const [editing, setEditing] = useState(false)
   const [copied, setCopied] = useState(false)
   const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID)
+  const [uploadedTemplate, setUploadedTemplate] = useState<File | null>(null)
+  const [exporting, setExporting] = useState<null | "docx" | "pdf">(null)
+  const templateInputRef = useRef<HTMLInputElement>(null)
 
   // A new generation refreshes the content but preserves the orgs the user typed.
   useEffect(() => setModel((prev) => mergeOrgs(parseMinutes(minutes), prev)), [minutes])
@@ -113,17 +118,44 @@ function ResultDoc({ minutes, title, regenerating = false }: ResultDocProps) {
     setTimeout(() => setCopied(false), 1600)
   }
 
-  function download() {
-    const blob = new Blob([toMarkdown(model) + "\n"], { type: "text/markdown" })
+  function triggerBlobDownload(blob: Blob, ext: string) {
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
     a.href = url
-    a.download = `${docTitle.replace(/\s+/g, "-").toLowerCase()}-minutes.md`
+    a.download = `${docTitle.replace(/\s+/g, "-").toLowerCase()}-minutes.${ext}`
     a.click()
     URL.revokeObjectURL(url)
   }
 
-  function exportPdf() {
+  function download() {
+    triggerBlobDownload(new Blob([toMarkdown(model) + "\n"], { type: "text/markdown" }), "md")
+  }
+
+  // Render the current minutes into the user's .docx template (or the bundled one)
+  // server-side and download it. PDF goes through LibreOffice for true fidelity, and
+  // falls back to printing the on-screen preview if the server can't produce one.
+  async function exportFile(format: "docx" | "pdf") {
+    setExporting(format)
+    try {
+      const blob = await exportMinutesDocx(toMarkdown(model), {
+        template: uploadedTemplate,
+        format,
+        filename: docTitle,
+      })
+      triggerBlobDownload(blob, format)
+    } catch (err) {
+      if (format === "pdf") {
+        toast.message("Server PDF unavailable — printing the preview instead.")
+        printPreview()
+      } else {
+        toast.error(err instanceof Error ? err.message : "Could not export the .docx")
+      }
+    } finally {
+      setExporting(null)
+    }
+  }
+
+  function printPreview() {
     const body = renderToStaticMarkup(<Template minutes={model} editable={false} />)
     const win = window.open("", "_blank", "width=900,height=1200")
     if (!win) return
@@ -141,6 +173,15 @@ function ResultDoc({ minutes, title, regenerating = false }: ResultDocProps) {
     }
     setTimeout(printOnce, 2000)
     win.document.fonts.ready.then(printOnce, printOnce)
+  }
+
+  function onTemplatePick(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.currentTarget.files?.[0]
+    if (file) {
+      setUploadedTemplate(file)
+      toast.success(`Template set: ${file.name}`)
+    }
+    e.currentTarget.value = "" // allow re-selecting the same file
   }
 
   return (
@@ -173,6 +214,40 @@ function ResultDoc({ minutes, title, regenerating = false }: ResultDocProps) {
               ))}
             </SelectContent>
           </Select>
+          <input
+            ref={templateInputRef}
+            type="file"
+            accept=".docx"
+            className="hidden"
+            onChange={onTemplatePick}
+          />
+          {uploadedTemplate ? (
+            <span
+              className="flex items-center gap-1 rounded bg-card px-1.5 py-1 text-xs text-muted-foreground"
+              title={uploadedTemplate.name}
+            >
+              <Paperclip className="size-3 shrink-0 opacity-60" aria-hidden />
+              <span className="max-w-[90px] truncate">{uploadedTemplate.name}</span>
+              <button
+                type="button"
+                aria-label="Remove template"
+                onClick={() => setUploadedTemplate(null)}
+                className="opacity-60 hover:opacity-100"
+              >
+                <X className="size-3" />
+              </button>
+            </span>
+          ) : (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => templateInputRef.current?.click()}
+              title="Upload your own .docx template"
+            >
+              <Paperclip className="size-4" />
+              Template
+            </Button>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <Button variant="ghost" size="sm" onClick={copy}>
@@ -183,8 +258,24 @@ function ResultDoc({ minutes, title, regenerating = false }: ResultDocProps) {
             <Download className="size-4" />
             .md
           </Button>
-          <Button variant="ghost" size="sm" onClick={exportPdf}>
-            <FileDown className="size-4" />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => exportFile("docx")}
+            disabled={exporting !== null}
+            title="Download an exact .docx (your template)"
+          >
+            {exporting === "docx" ? <Loader2 className="size-4 animate-spin" /> : <FileType2 className="size-4" />}
+            .docx
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => exportFile("pdf")}
+            disabled={exporting !== null}
+            title="Download a PDF rendered from the .docx"
+          >
+            {exporting === "pdf" ? <Loader2 className="size-4 animate-spin" /> : <FileDown className="size-4" />}
             PDF
           </Button>
         </div>

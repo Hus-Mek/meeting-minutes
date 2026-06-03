@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest"
-import { buildMinutesFormData, generateMinutes, type MinutesOptions } from "./api"
+import {
+  buildDocxFormData,
+  buildMinutesFormData,
+  exportMinutesDocx,
+  generateMinutes,
+  type MinutesOptions,
+} from "./api"
 
 const OPTIONS: MinutesOptions = {
   notes: "budget",
@@ -69,5 +75,47 @@ describe("generateMinutes", () => {
       ),
     )
     await expect(generateMinutes(file(), OPTIONS)).rejects.toThrow("no segments")
+  })
+})
+
+describe("buildDocxFormData", () => {
+  it("includes the minutes, default format, and filename", () => {
+    const form = buildDocxFormData("## Topic")
+    expect(form.get("minutes")).toBe("## Topic")
+    expect(form.get("format")).toBe("docx")
+    expect(form.get("filename")).toBe("minutes")
+    expect(form.get("template")).toBeNull()
+  })
+
+  it("includes the uploaded template, chosen format, and filename", () => {
+    const template = new File(["PK"], "client.docx")
+    const form = buildDocxFormData("## Topic", { template, format: "pdf", filename: "محضر" })
+    expect((form.get("template") as File).name).toBe("client.docx")
+    expect(form.get("format")).toBe("pdf")
+    expect(form.get("filename")).toBe("محضر")
+  })
+})
+
+describe("exportMinutesDocx", () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it("returns the file blob on success", async () => {
+    // jsdom's Response.blob() is flaky, so mock the parts exportMinutesDocx uses.
+    const blob = new Blob([new Uint8Array([0x50, 0x4b])])
+    vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, blob: async () => blob })))
+    const result = await exportMinutesDocx("## Topic")
+    expect(result.size).toBe(2)
+  })
+
+  it("throws the server error message on failure", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(JSON.stringify({ error: "invalid or unrenderable .docx template" }), {
+          status: 400,
+        }),
+      ),
+    )
+    await expect(exportMinutesDocx("## Topic")).rejects.toThrow("unrenderable")
   })
 })
