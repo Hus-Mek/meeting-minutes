@@ -340,3 +340,78 @@ def generate_minutes_from_files(
     out = Path(out_path)
     out.write_text(minutes + "\n", encoding="utf-8")
     return out
+
+
+def build_handoff_prompt(
+    *,
+    segments: tuple[Segment, ...],
+    notes: str,
+    title: str,
+    date: str,
+    time: str = "",
+    location: str = "",
+    attendees: str = "",
+    recap: str = "",
+    speaker_map: dict[str, str] | None = None,
+) -> str:
+    """Assemble the full single-pass prompt for an external agent (Cowork / Claude
+    Code) to complete — **no LLM call is made**.
+
+    A large-context model needs no map-reduce, so this emits the whole transcript in
+    one system+user prompt. The agent writes the محضر by following the SYSTEM contract
+    on the USER content. This is the ``--emit-prompt`` handoff: the *agent* (on its
+    subscription), not a metered API, does the generation.
+    """
+    if not segments:
+        raise ValueError("transcript contains no segments — check the file and field mapping")
+    if speaker_map:
+        segments = _apply_speaker_map(segments, speaker_map)
+    transcript_text = format_for_prompt(segments)
+    system = prompt.build_system_prompt(title=title, date=date, time=time, location=location)
+    user = prompt.build_user_prompt(
+        notes=notes, transcript=transcript_text, attendees=attendees, recap=recap
+    )
+    return (
+        "# محضر اجتماع — generation handoff\n\n"
+        "Complete this for the meeting-minutes app: write the formal Arabic minutes by "
+        "following the SYSTEM contract applied to the USER content below. Output ONLY "
+        "the minutes in Markdown — no preamble, no explanation.\n\n"
+        "================ SYSTEM ================\n"
+        f"{system}\n\n"
+        "================ USER ================\n"
+        f"{user}\n"
+    )
+
+
+def emit_prompt_from_files(
+    *,
+    transcript_path: str | Path,
+    notes_path: str | Path,
+    out_path: str | Path,
+    title: str,
+    date: str,
+    time: str = "",
+    location: str = "",
+    attendees: str = "",
+    recap: str = "",
+    fields: FieldMap | None = None,
+    speaker_map: dict[str, str] | None = None,
+) -> Path:
+    """Write the agent-handoff prompt to a file (no LLM call). Mirrors
+    ``generate_minutes_from_files`` but emits the prompt instead of the minutes."""
+    segments = load_transcript(transcript_path, fields=fields)
+    notes = Path(notes_path).read_text(encoding="utf-8")
+    text = build_handoff_prompt(
+        segments=segments,
+        notes=notes,
+        title=title,
+        date=date,
+        time=time,
+        location=location,
+        attendees=attendees,
+        recap=recap,
+        speaker_map=speaker_map,
+    )
+    out = Path(out_path)
+    out.write_text(text + "\n", encoding="utf-8")
+    return out

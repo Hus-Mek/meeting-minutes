@@ -220,3 +220,36 @@ class TestGenerateMinutesFromFiles:
         )
         assert "Alice" in fake.calls[0]["user"]
         assert "SPEAKER_00" not in fake.calls[0]["user"]
+
+
+class TestHandoffPrompt:
+    """--emit-prompt builds the full prompt for an external agent — no LLM call."""
+
+    def test_contains_system_user_transcript_and_notes(self):
+        segs = _segments(("Alice", 0.0, 5.0, "نبدأ الاجتماع"))
+        out = M.build_handoff_prompt(
+            segments=segs, notes="ركز على القرارات", title="اجتماع المتابعة", date="11/5/2026"
+        )
+        assert "SYSTEM" in out and "USER" in out
+        assert "محضر اجتماع" in out
+        assert "نبدأ الاجتماع" in out  # transcript text embedded
+        assert "ركز على القرارات" in out  # notes embedded
+
+    def test_empty_segments_raises(self):
+        with pytest.raises(ValueError, match="no segments"):
+            M.build_handoff_prompt(segments=(), notes="", title="t", date="d")
+
+    def test_emit_prompt_from_files_writes_without_llm(self, tmp_path):
+        tj = tmp_path / "t.json"
+        tj.write_text(
+            json.dumps([{"speaker": "A", "start": 0, "end": 1, "text": "hello world"}]),
+            encoding="utf-8",
+        )
+        notes = tmp_path / "n.md"
+        notes.write_text("", encoding="utf-8")
+        out = tmp_path / "prompt.txt"
+        M.emit_prompt_from_files(
+            transcript_path=tj, notes_path=notes, out_path=out, title="T", date="D"
+        )
+        text = out.read_text(encoding="utf-8")
+        assert "SYSTEM" in text and "hello world" in text

@@ -14,7 +14,11 @@ import sys
 from pathlib import Path
 
 from .transcript import FieldMap
-from .minutes import generate_minutes_from_files, parse_speaker_map as _parse_speaker_map
+from .minutes import (
+    emit_prompt_from_files,
+    generate_minutes_from_files,
+    parse_speaker_map as _parse_speaker_map,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -68,6 +72,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Rename anonymous labels, e.g. 'SPEAKER_00=Alice,SPEAKER_01=Bob'",
     )
+    parser.add_argument(
+        "--emit-prompt",
+        action="store_true",
+        help="Write the assembled prompt to --out instead of generating minutes "
+        "(no LLM call) — hand off to Cowork/Claude Code to write the محضر on their "
+        "subscription. Ignores --backend/--model.",
+    )
     parser.add_argument("--debug", action="store_true", help="Show full tracebacks on error")
     return parser
 
@@ -88,6 +99,22 @@ def main(argv: list[str] | None = None) -> int:
         recap = args.recap
         if args.recap_file:
             recap = Path(args.recap_file).read_text(encoding="utf-8")
+        if args.emit_prompt:
+            out = emit_prompt_from_files(
+                transcript_path=args.transcript,
+                notes_path=args.notes,
+                out_path=args.out,
+                title=args.title,
+                date=args.date,
+                time=args.time,
+                location=args.location,
+                attendees=attendees,
+                recap=recap,
+                fields=fields,
+                speaker_map=speaker_map,
+            )
+            print(f"wrote prompt to {out} — hand to Cowork/Claude Code to write the minutes")
+            return 0
         out = generate_minutes_from_files(
             transcript_path=args.transcript,
             notes_path=args.notes,
