@@ -9,6 +9,7 @@ import {
 } from "@/lib/api"
 import { InputsPane } from "@/components/InputsPane"
 import { MinutesPane, type PaneState } from "@/components/MinutesPane"
+import { DEFAULT_TEMPLATE_ID } from "@/components/templates/registry"
 import { Button } from "@/components/ui/button"
 
 function today(): string {
@@ -43,6 +44,8 @@ export default function App() {
   const [options, setOptions] = useState<MinutesOptions>(DEFAULT_OPTIONS)
   const [paneState, setPaneState] = useState<PaneState>("input")
   const [minutes, setMinutes] = useState("")
+  const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID)
+  const [uploadedTemplate, setUploadedTemplate] = useState<File | null>(null)
 
   const { speakerKey, startKey, endKey, textKey } = options
 
@@ -136,6 +139,10 @@ export default function App() {
             inspectError={inspectError}
             options={options}
             onChange={onChange}
+            templateId={templateId}
+            onTemplateIdChange={setTemplateId}
+            uploadedTemplate={uploadedTemplate}
+            onUploadedTemplateChange={setUploadedTemplate}
           />
         </section>
         <section className="min-h-0 overflow-hidden bg-paper">
@@ -143,6 +150,8 @@ export default function App() {
             state={paneState}
             minutes={minutes}
             title={options.title}
+            templateId={templateId}
+            uploadedTemplate={uploadedTemplate}
           />
         </section>
       </main>

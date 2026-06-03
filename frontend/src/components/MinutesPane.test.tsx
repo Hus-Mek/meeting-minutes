@@ -28,6 +28,7 @@ const SAMPLE = `# محضر اجتماع — اجتماع المتابعة (2026-
 | إعداد عرض الأجندة | نورة القحطاني | 2026-06-10 |`
 
 // The نتائج table, scoped via its unique "المسؤول" header (other tables have no such column).
+// Note: The table only appears in Edit mode, so tests must click Edit first.
 function outcomesTable() {
   return within(screen.getByRole("columnheader", { name: "المسؤول" }).closest("table")!)
 }
@@ -43,31 +44,28 @@ describe("MinutesPane", () => {
     expect(screen.getByText(/Reading the transcript/i)).toBeInTheDocument()
   })
 
-  it("renders the formal محضر اجتماع section headings in the result state", () => {
+  it("renders the formal محضر اجتماع section headings in edit mode", () => {
     render(<MinutesPane state="result" minutes={SAMPLE} title="اجتماع المتابعة" />)
+    fireEvent.click(screen.getByRole("button", { name: /edit/i }))
     expect(screen.getByRole("heading", { name: "قائمة الحضور" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "نقاط نقاش الاجتماع" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "نتائج الاجتماع" })).toBeInTheDocument()
     expect(screen.getByText("شكرًا لكم")).toBeInTheDocument()
   })
 
-  it("exposes edit, copy, .md, and PDF actions in the result state", () => {
+  it("exposes edit, copy, .md, .docx, and PDF actions in the result state", () => {
     render(<MinutesPane state="result" minutes={SAMPLE} title="x" />)
+    // One toggle button: "Edit" in the (default) exact view, "Exact preview" in edit mode.
     expect(screen.getByRole("button", { name: /edit/i })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /copy/i })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /\.md/i })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /\.docx/i })).toBeInTheDocument()
     expect(screen.getByRole("button", { name: /pdf/i })).toBeInTheDocument()
-  })
-
-  it("shows a template picker in the result toolbar with the default template selected", () => {
-    render(<MinutesPane state="result" minutes={SAMPLE} title="x" />)
-    const picker = screen.getByRole("combobox", { name: /template/i })
-    expect(picker).toBeInTheDocument()
-    expect(picker).toHaveTextContent("النموذج الافتراضي")
   })
 
   it("shows the assignee's organization in المسؤول, not their name", () => {
     render(<MinutesPane state="result" minutes={SAMPLE} title="x" />)
+    fireEvent.click(screen.getByRole("button", { name: /edit/i }))
     // نورة's known الجهة surfaces as the owner of her task…
     expect(outcomesTable().getByText("هيئة الاتصالات وتقنية المعلومات")).toBeInTheDocument()
     // …while مشاري (no الجهة yet) shows the placeholder dash, never his name.
@@ -98,9 +96,9 @@ describe("MinutesPane", () => {
 | --- | --- | --- |
 | إعداد التقرير | خالد السبيعي | — |`
     render(<MinutesPane state="result" minutes={md} title="x" />)
+    fireEvent.click(screen.getByRole("button", { name: /edit/i }))
     expect(outcomesTable().getByText("خالد السبيعي")).toBeInTheDocument() // verbatim fallback
 
-    fireEvent.click(screen.getByRole("button", { name: /edit/i }))
     fireEvent.click(screen.getByRole("button", { name: /إضافة حاضر/ }))
 
     // The new (last) row's name + الجهة inputs.
@@ -125,6 +123,7 @@ describe("MinutesPane", () => {
     rerender(<MinutesPane state="result" minutes={`${SAMPLE}\n`} title="x" />)
 
     // مشاري's task owner still shows the org the user typed (not wiped to —).
+    // The view stays in Edit mode across the re-generate, so the table is still shown.
     expect(outcomesTable().getByText("وزارة المالية")).toBeInTheDocument()
   })
 })

@@ -1,11 +1,10 @@
-import { useEffect, useRef, useState, type ChangeEvent } from "react"
+import { useEffect, useRef, useState } from "react"
 import { renderToStaticMarkup } from "react-dom/server"
 import { toast } from "sonner"
-import { Check, Copy, Download, Eye, FileDown, FileText, FileType2, LayoutTemplate, Loader2, Paperclip, Pencil, X } from "lucide-react"
+import { Check, Copy, Download, Eye, FileDown, FileText, FileType2, LayoutTemplate, Loader2, Pencil } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
-import { Select, SelectContent, SelectItem, SelectTrigger } from "@/components/ui/select"
-import { DEFAULT_TEMPLATE_ID, getTemplate, TEMPLATES } from "@/components/templates/registry"
+import { DEFAULT_TEMPLATE_ID, getTemplate } from "@/components/templates/registry"
 import { exportMinutesDocx } from "@/lib/api"
 import { buildStandaloneHtml } from "@/lib/minutesDom"
 import { parseMinutes, toMarkdown, type Minutes } from "@/lib/minutes"
@@ -16,13 +15,30 @@ interface MinutesPaneProps {
   state: PaneState
   minutes: string
   title: string
+  templateId?: string
+  uploadedTemplate?: File | null
 }
 
-export function MinutesPane({ state, minutes, title }: MinutesPaneProps) {
+export function MinutesPane({
+  state,
+  minutes,
+  title,
+  templateId = DEFAULT_TEMPLATE_ID,
+  uploadedTemplate = null,
+}: MinutesPaneProps) {
   // Keep the result mounted once minutes exist, so in-place edits survive a
   // re-generate (it shows a "regenerating" hint instead of unmounting and
   // re-parsing from scratch). The first-ever generation still shows LoadingDoc.
-  if (minutes) return <ResultDoc minutes={minutes} title={title} regenerating={state === "loading"} />
+  if (minutes)
+    return (
+      <ResultDoc
+        minutes={minutes}
+        title={title}
+        templateId={templateId}
+        uploadedTemplate={uploadedTemplate}
+        regenerating={state === "loading"}
+      />
+    )
   if (state === "loading") return <LoadingDoc />
   return <EmptyDoc />
 }
@@ -38,8 +54,8 @@ function EmptyDoc() {
           Your minutes appear here
         </h2>
         <p className="text-sm leading-relaxed text-muted-foreground">
-          Add a transcript and your notes, then generate. The result is a formal
-          محضر اجتماع you can edit in place and export to PDF.
+          Add a transcript and your notes, then generate. The result is rendered into
+          your chosen محضر اجتماع template — exactly as it downloads.
         </p>
       </div>
     </div>
@@ -81,6 +97,8 @@ function LoadingDoc() {
 interface ResultDocProps {
   minutes: string
   title: string
+  templateId: string
+  uploadedTemplate: File | null
   regenerating?: boolean
 }
 
@@ -97,23 +115,60 @@ function mergeOrgs(next: Minutes, prev: Minutes): Minutes {
   }
 }
 
-function ResultDoc({ minutes, title, regenerating = false }: ResultDocProps) {
+function ResultDoc({ minutes, title, templateId, uploadedTemplate, regenerating = false }: ResultDocProps) {
   const [model, setModel] = useState<Minutes>(() => parseMinutes(minutes))
-  const [editing, setEditing] = useState(false)
   const [copied, setCopied] = useState(false)
-  const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID)
-  const [uploadedTemplate, setUploadedTemplate] = useState<File | null>(null)
   const [exporting, setExporting] = useState<null | "docx" | "pdf">(null)
-  const templateInputRef = useRef<HTMLInputElement>(null)
+  const [view, setView] = useState<"exact" | "edit">("exact")
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null)
+  const [pdfLoading, setPdfLoading] = useState(false)
+  const [pdfError, setPdfError] = useState<string | null>(null)
+  const pdfUrlRef = useRef<string | null>(null)
 
   // A new generation refreshes the content but preserves the orgs the user typed.
   useEffect(() => setModel((prev) => mergeOrgs(parseMinutes(minutes), prev)), [minutes])
 
   const Template = getTemplate(templateId).Component
   const docTitle = title || model.title || "meeting"
+  const md = toMarkdown(model)
+  const templateLabel = uploadedTemplate ? uploadedTemplate.name : getTemplate(templateId).name
+
+  // The exact preview IS the rendered document: fill the chosen .docx server-side,
+  // convert to PDF, and show it inline. Re-rendered when the exact view is shown for
+  // the current content (edits happen in the edit view, which skips this fetch).
+  useEffect(() => {
+    if (view !== "exact") return
+    let cancelled = false
+    setPdfLoading(true)
+    setPdfError(null)
+    exportMinutesDocx(md, { template: uploadedTemplate, format: "pdf", filename: docTitle })
+      .then((blob) => {
+        if (cancelled) return
+        if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
+        pdfUrlRef.current = URL.createObjectURL(blob)
+        setPdfUrl(pdfUrlRef.current)
+      })
+      .catch((err) => {
+        if (!cancelled) setPdfError(err instanceof Error ? err.message : "Could not render the exact preview")
+      })
+      .finally(() => {
+        if (!cancelled) setPdfLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [view, md, uploadedTemplate, docTitle])
+
+  // Release the last object URL when the component unmounts.
+  useEffect(
+    () => () => {
+      if (pdfUrlRef.current) URL.revokeObjectURL(pdfUrlRef.current)
+    },
+    [],
+  )
 
   async function copy() {
-    await navigator.clipboard.writeText(toMarkdown(model))
+    await navigator.clipboard.writeText(md)
     setCopied(true)
     setTimeout(() => setCopied(false), 1600)
   }
@@ -128,25 +183,17 @@ function ResultDoc({ minutes, title, regenerating = false }: ResultDocProps) {
   }
 
   function download() {
-    triggerBlobDownload(new Blob([toMarkdown(model) + "\n"], { type: "text/markdown" }), "md")
+    triggerBlobDownload(new Blob([md + "\n"], { type: "text/markdown" }), "md")
   }
 
-  // Render the current minutes into the user's .docx template (or the bundled one)
-  // server-side and download it. PDF goes through LibreOffice for true fidelity, and
-  // falls back to printing the on-screen preview if the server can't produce one.
   async function exportFile(format: "docx" | "pdf") {
     setExporting(format)
     try {
-      const blob = await exportMinutesDocx(toMarkdown(model), {
-        template: uploadedTemplate,
-        format,
-        filename: docTitle,
-      })
+      const blob = await exportMinutesDocx(md, { template: uploadedTemplate, format, filename: docTitle })
       triggerBlobDownload(blob, format)
     } catch (err) {
       if (format === "pdf") {
-        toast.message("Server PDF unavailable — printing the preview instead.")
-        printPreview()
+        printPreview() // fall back to browser print; it owns its own messaging
       } else {
         toast.error(err instanceof Error ? err.message : "Could not export the .docx")
       }
@@ -158,7 +205,11 @@ function ResultDoc({ minutes, title, regenerating = false }: ResultDocProps) {
   function printPreview() {
     const body = renderToStaticMarkup(<Template minutes={model} editable={false} />)
     const win = window.open("", "_blank", "width=900,height=1200")
-    if (!win) return
+    if (!win) {
+      toast.error("Couldn't open a print window — allow popups, or use the .docx export.")
+      return
+    }
+    toast.message("Server PDF unavailable — printing the preview instead.")
     win.document.open()
     win.document.write(buildStandaloneHtml(body, docTitle))
     win.document.close()
@@ -175,79 +226,27 @@ function ResultDoc({ minutes, title, regenerating = false }: ResultDocProps) {
     win.document.fonts.ready.then(printOnce, printOnce)
   }
 
-  function onTemplatePick(e: ChangeEvent<HTMLInputElement>) {
-    const file = e.currentTarget.files?.[0]
-    if (file) {
-      setUploadedTemplate(file)
-      toast.success(`Template set: ${file.name}`)
-    }
-    e.currentTarget.value = "" // allow re-selecting the same file
-  }
-
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center justify-between gap-1.5 border-b border-line bg-paper/85 px-4 py-2.5 backdrop-blur">
         <div className="flex min-w-0 items-center gap-1.5">
           <Button
-            variant={editing ? "secondary" : "ghost"}
+            variant={view === "edit" ? "secondary" : "ghost"}
             size="sm"
-            onClick={() => setEditing((e) => !e)}
+            onClick={() => setView((v) => (v === "edit" ? "exact" : "edit"))}
           >
-            {editing ? <Eye className="size-4" /> : <Pencil className="size-4" />}
-            {editing ? "Done" : "Edit"}
+            {view === "edit" ? <Eye className="size-4" /> : <Pencil className="size-4" />}
+            {view === "edit" ? "Exact preview" : "Edit"}
           </Button>
-          <Select value={templateId} onValueChange={setTemplateId}>
-            <SelectTrigger
-              className="h-8 w-[190px] gap-1.5 bg-card text-xs"
-              aria-label="Template / القالب"
-            >
-              <LayoutTemplate className="size-3.5 shrink-0 opacity-60" aria-hidden />
-              <span className="truncate" dir="rtl">
-                {getTemplate(templateId).name}
-              </span>
-            </SelectTrigger>
-            <SelectContent>
-              {TEMPLATES.map((t) => (
-                <SelectItem key={t.id} value={t.id} className="text-xs" dir="rtl">
-                  {t.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <input
-            ref={templateInputRef}
-            type="file"
-            accept=".docx"
-            className="hidden"
-            onChange={onTemplatePick}
-          />
-          {uploadedTemplate ? (
-            <span
-              className="flex items-center gap-1 rounded bg-card px-1.5 py-1 text-xs text-muted-foreground"
-              title={uploadedTemplate.name}
-            >
-              <Paperclip className="size-3 shrink-0 opacity-60" aria-hidden />
-              <span className="max-w-[90px] truncate">{uploadedTemplate.name}</span>
-              <button
-                type="button"
-                aria-label="Remove template"
-                onClick={() => setUploadedTemplate(null)}
-                className="opacity-60 hover:opacity-100"
-              >
-                <X className="size-3" />
-              </button>
+          <span
+            className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground"
+            title={templateLabel}
+          >
+            <LayoutTemplate className="size-3.5 shrink-0 opacity-60" aria-hidden />
+            <span className="max-w-[160px] truncate" dir="auto">
+              {templateLabel}
             </span>
-          ) : (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => templateInputRef.current?.click()}
-              title="Upload your own .docx template"
-            >
-              <Paperclip className="size-4" />
-              Template
-            </Button>
-          )}
+          </span>
         </div>
         <div className="flex items-center gap-1.5">
           <Button variant="ghost" size="sm" onClick={copy}>
@@ -280,21 +279,45 @@ function ResultDoc({ minutes, title, regenerating = false }: ResultDocProps) {
           </Button>
         </div>
       </div>
+
       {regenerating && (
         <p className="flex items-center justify-center gap-2 bg-[var(--oxide-soft)] px-6 py-1.5 text-center text-xs text-muted-foreground">
           <Loader2 className="size-3 animate-spin" aria-hidden />
           Regenerating… your الجهة edits are kept.
         </p>
       )}
-      {editing && (
-        <p className="bg-[var(--oxide-soft)] px-6 py-1.5 text-center text-xs text-muted-foreground">
-          Fill each person's الجهة in قائمة الحضور — the المسؤول column updates automatically. Add a row
-          for anyone missing.
-        </p>
+
+      {view === "edit" ? (
+        <>
+          <p className="bg-[var(--oxide-soft)] px-6 py-1.5 text-center text-xs text-muted-foreground">
+            Fill each person's الجهة in قائمة الحضور — the المسؤول column updates automatically, then
+            switch back to Exact preview.
+          </p>
+          <div className="print-area overflow-y-auto px-8 py-10 sm:px-12">
+            <Template minutes={model} editable onChange={setModel} />
+          </div>
+        </>
+      ) : (
+        <div className="relative min-h-0 flex-1 bg-muted/30">
+          {pdfLoading && (
+            <p className="absolute inset-x-0 top-0 z-10 flex items-center justify-center gap-2 bg-paper/85 px-6 py-1.5 text-center text-xs text-muted-foreground backdrop-blur">
+              <Loader2 className="size-3 animate-spin" aria-hidden />
+              Rendering the exact document…
+            </p>
+          )}
+          {pdfError ? (
+            <div className="h-full overflow-y-auto px-8 py-10 sm:px-12">
+              <p className="mx-auto mb-4 max-w-[68ch] rounded border border-line bg-card px-3 py-2 text-xs text-muted-foreground">
+                Exact preview unavailable ({pdfError}). Showing an approximate preview — the downloaded
+                .docx is still exact.
+              </p>
+              <Template minutes={model} editable={false} />
+            </div>
+          ) : (
+            pdfUrl && <iframe src={pdfUrl} title="Exact document preview" className="h-full w-full border-0" />
+          )}
+        </div>
       )}
-      <div className="print-area overflow-y-auto px-8 py-10 sm:px-12">
-        <Template minutes={model} editable={editing} onChange={setModel} />
-      </div>
     </div>
   )
 }

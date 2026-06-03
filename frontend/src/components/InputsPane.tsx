@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { TemplatePicker } from "@/components/TemplatePicker"
 
 interface InputsPaneProps {
   file: File | null
@@ -25,6 +26,10 @@ interface InputsPaneProps {
   inspectError: string | null
   options: MinutesOptions
   onChange: (patch: Partial<MinutesOptions>) => void
+  templateId: string
+  onTemplateIdChange: (id: string) => void
+  uploadedTemplate: File | null
+  onUploadedTemplateChange: (file: File | null) => void
 }
 
 const SECTION_LABEL = "text-xs font-semibold uppercase tracking-wide text-muted-foreground"
@@ -37,6 +42,10 @@ export function InputsPane({
   inspectError,
   options,
   onChange,
+  templateId,
+  onTemplateIdChange,
+  uploadedTemplate,
+  onUploadedTemplateChange,
 }: InputsPaneProps) {
   return (
     <div className="flex flex-col gap-6">
@@ -154,6 +163,16 @@ export function InputsPane({
         <p className="text-xs text-muted-foreground">
           Partial &amp; approximate — used as a hint for detail/structure, never as fact.
         </p>
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <Label className={SECTION_LABEL}>Output Format</Label>
+        <TemplatePicker
+          templateId={templateId}
+          onTemplateChange={onTemplateIdChange}
+          uploadedTemplate={uploadedTemplate}
+          onUploadTemplate={onUploadedTemplateChange}
+        />
       </section>
 
       <Accordion type="single" collapsible className="border-t border-border">
