@@ -70,6 +70,7 @@ DEFAULT_LOCAL_MODEL = "iKhalid/ALLaM:7b"
 DEFAULT_MODELS = {
     "groq": DEFAULT_GROQ_MODEL,
     "openrouter": DEFAULT_OPENROUTER_MODEL,
+    "anthropic": "claude-opus-4-8",
     "ollama": DEFAULT_LOCAL_MODEL,
     "lmstudio": DEFAULT_LOCAL_MODEL,
 }
@@ -302,6 +303,57 @@ class OpenRouterClient:
         raise RuntimeError(f"OpenRouter request failed: {last_exc}")
 
 
+class AnthropicClient:
+    """Anthropic Claude API backend (direct, no intermediary like OpenRouter).
+
+    Calls the official Anthropic Messages API. Metered directly on ANTHROPIC_API_KEY,
+    with no routing through OpenRouter or any proxy — fully independent of the
+    Tafkeek-reserved OpenRouter key. Useful when you have Claude subscription or
+    want dedicated API billing.
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        *,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        max_output_tokens: int = DEFAULT_MAX_OUTPUT_TOKENS,
+    ) -> None:
+        key = api_key or os.environ.get("ANTHROPIC_API_KEY")
+        if not key:
+            raise RuntimeError("ANTHROPIC_API_KEY is not set")
+        try:
+            from anthropic import Anthropic
+        except ImportError:
+            raise ImportError("Install anthropic SDK: pip install anthropic") from None
+        self._client = Anthropic(api_key=key)
+        self._max_output_tokens = max_output_tokens
+
+    def generate(
+        self, system: str, user: str, *, model: str = "claude-opus-4-8"
+    ) -> str:
+        try:
+            response = self._client.messages.create(
+                model=model,
+                max_tokens=self._max_output_tokens,
+                temperature=0.2,
+                system=system,
+                messages=[{"role": "user", "content": user}],
+            )
+            choice = response.content[0]
+            if getattr(response, "stop_reason", None) == "max_tokens":
+                raise TruncatedResponseError(
+                    f"Anthropic response hit the {self._max_output_tokens}-token cap "
+                    "and was truncated; raise the cap or shorten the input."
+                )
+            return choice.text or ""
+        except Exception as e:
+            if "invalid api key" in str(e).lower() or "unauthorized" in str(e).lower():
+                raise RuntimeError("ANTHROPIC_API_KEY is invalid or expired") from e
+            raise
+
+
 _DEFAULT_OLLAMA_URL = "http://localhost:11434/v1"
 _DEFAULT_LMSTUDIO_URL = "http://localhost:1234/v1"
 
@@ -398,6 +450,7 @@ class LocalOpenAIClient:
 _BACKENDS: dict[str, Callable[[], LlmClient]] = {
     "groq": lambda: GroqClient(),
     "openrouter": lambda: OpenRouterClient(),
+    "anthropic": lambda: AnthropicClient(),
     "ollama": lambda: LocalOpenAIClient(default_base_url=_DEFAULT_OLLAMA_URL),
     "lmstudio": lambda: LocalOpenAIClient(default_base_url=_DEFAULT_LMSTUDIO_URL),
 }

@@ -169,15 +169,16 @@ export function InputsPane({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="openrouter">OpenRouter — Sonnet 4.6 (best Arabic)</SelectItem>
-                  <SelectItem value="groq">Groq — Llama 3.3 70B (fast, free)</SelectItem>
-                  <SelectItem value="lmstudio">LM Studio — local (free, private)</SelectItem>
-                  <SelectItem value="ollama">Ollama — local (free, private)</SelectItem>
+                  <SelectItem value="anthropic">Anthropic Claude (best Arabic)</SelectItem>
+                  <SelectItem value="openrouter">OpenRouter — Sonnet 4.6</SelectItem>
+                  <SelectItem value="groq">Groq — Llama 3.3 70B (fast)</SelectItem>
+                  <SelectItem value="lmstudio">LM Studio — local (free)</SelectItem>
+                  <SelectItem value="ollama">Ollama — local (free)</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                OpenRouter needs OPENROUTER_API_KEY. Local backends need a running
-                LM Studio / Ollama server + a model id below (see docs/LOCAL_MODELS.md).
+                Anthropic/OpenRouter need API keys. Local backends need a running server
+                + a model id below (see docs/LOCAL_MODELS.md).
               </p>
             </div>
             <p className="text-xs text-muted-foreground">JSON transcripts only — field mapping:</p>

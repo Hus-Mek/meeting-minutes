@@ -16,6 +16,7 @@ from meeting_minutes.llm import (
     DEFAULT_GROQ_MODEL,
     DEFAULT_LOCAL_MAX_OUTPUT_TOKENS,
     DEFAULT_LOCAL_MODEL,
+    AnthropicClient,
     GroqClient,
     LocalOpenAIClient,
     OpenRouterClient,
@@ -106,6 +107,7 @@ class TestBudgeting:
     def test_default_model_per_backend(self):
         assert default_model_for("groq") == DEFAULT_GROQ_MODEL
         assert default_model_for("openrouter").startswith("anthropic/")
+        assert default_model_for("anthropic").startswith("claude-")
         assert default_model_for("ollama") == DEFAULT_LOCAL_MODEL
         assert default_model_for("lmstudio") == DEFAULT_LOCAL_MODEL
         assert default_model_for("unknown") == DEFAULT_GROQ_MODEL
@@ -310,3 +312,115 @@ class TestLocalClient:
         monkeypatch.setattr(httpx, "post", boom)
         with pytest.raises(RuntimeError, match="local.*server running"):
             LocalOpenAIClient(max_retries=0).generate("s", "u", model="m")
+
+
+class TestAnthropicClient:
+    """Anthropic Claude backend tests (mocked, no network)."""
+
+    def test_generate_success(self, monkeypatch):
+        """Successful Anthropic API call returns the text."""
+
+        class FakeContent:
+            text = "## Minutes\nDone."
+
+        class FakeResponse:
+            content = [FakeContent()]
+            stop_reason = "end_turn"
+
+        captured = {}
+
+        class FakeMessages:
+            def create(self, **kwargs):
+                captured.update(kwargs)
+                return FakeResponse()
+
+        class FakeAnthropic:
+            def __init__(self, api_key):
+                self.messages = FakeMessages()
+
+        def fake_import(name, *args, **kwargs):
+            if name == "anthropic":
+                mod = types.ModuleType("anthropic")
+                mod.Anthropic = FakeAnthropic
+                return mod
+            return __import__(name, *args, **kwargs)
+
+        monkeypatch.setattr("builtins.__import__", fake_import)
+        result = AnthropicClient(api_key="test-key").generate(
+            "You are a minutes writer", "Write minutes", model="claude-opus-4-8"
+        )
+        assert result == "## Minutes\nDone."
+        assert captured["model"] == "claude-opus-4-8"
+        assert captured["system"] == "You are a minutes writer"
+        assert captured["messages"][0]["role"] == "user"
+
+    def test_missing_api_key_raises(self, monkeypatch):
+        """Raises RuntimeError if ANTHROPIC_API_KEY is not set."""
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
+            AnthropicClient()
+
+    def test_import_error(self, monkeypatch):
+        """Raises ImportError if anthropic SDK is not installed."""
+
+        def import_hook(name, *args, **kwargs):
+            if "anthropic" in name:
+                raise ImportError("anthropic not installed")
+            return __import__(name, *args, **kwargs)
+
+        monkeypatch.setattr("builtins.__import__", import_hook)
+        with pytest.raises(ImportError, match="anthropic SDK"):
+            AnthropicClient(api_key="key")
+
+    def test_auth_error_on_invalid_key(self, monkeypatch):
+        """Invalid API key raises RuntimeError with a clear message."""
+
+        def raise_auth(*a, **k):
+            raise Exception("Invalid API key: unauthorized")
+
+        class FakeMessages:
+            create = raise_auth
+
+        class FakeAnthropic:
+            def __init__(self, api_key):
+                self.messages = FakeMessages()
+
+        def fake_import(name, *args, **kwargs):
+            if name == "anthropic":
+                mod = types.ModuleType("anthropic")
+                mod.Anthropic = FakeAnthropic
+                return mod
+            return __import__(name, *args, **kwargs)
+
+        monkeypatch.setattr("builtins.__import__", fake_import)
+        with pytest.raises(RuntimeError, match="invalid or expired"):
+            AnthropicClient(api_key="bad-key").generate("s", "u")
+
+    def test_truncation_raises(self, monkeypatch):
+        """Response hit max_tokens raises TruncatedResponseError."""
+
+        class FakeContent:
+            text = "incomplete..."
+
+        class FakeResponse:
+            content = [FakeContent()]
+            stop_reason = "max_tokens"
+
+        class FakeMessages:
+            def create(self, **kwargs):
+                return FakeResponse()
+
+        class FakeAnthropic:
+            def __init__(self, api_key):
+                self.messages = FakeMessages()
+
+        def fake_import(name, *args, **kwargs):
+            if name == "anthropic":
+                mod = types.ModuleType("anthropic")
+                mod.Anthropic = FakeAnthropic
+                return mod
+            return __import__(name, *args, **kwargs)
+
+        monkeypatch.setattr("builtins.__import__", fake_import)
+        with pytest.raises(TruncatedResponseError, match="truncated"):
+            AnthropicClient(api_key="key").generate("s", "u")
