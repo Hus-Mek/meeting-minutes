@@ -456,13 +456,20 @@ class ClaudeCodeClient:
     """
 
     # Common install locations, checked after PATH so it "just works" even when the
-    # app is launched from a shell without ~/.local/bin on PATH. Not a hardcoded
-    # user path — `~` expands for whoever runs it, keeping it portable.
+    # app is launched from a shell/process without the CLI on PATH. Not hardcoded
+    # user paths — `~` expands per-user (to %USERPROFILE% on Windows), staying
+    # portable across machines and OSes.
     _FALLBACK_PATHS = (
+        # Unix / macOS
         "~/.local/bin/claude",
         "~/.claude/local/claude",
         "/usr/local/bin/claude",
         "/opt/homebrew/bin/claude",
+        # Windows — npm global shim (.cmd) + native installer (.exe)
+        "~/AppData/Roaming/npm/claude.cmd",
+        "~/AppData/Roaming/npm/claude.exe",
+        "~/.local/bin/claude.exe",
+        "~/AppData/Local/Programs/claude/claude.exe",
     )
 
     def __init__(self, *, binary: str | None = None, timeout: float = 600.0) -> None:

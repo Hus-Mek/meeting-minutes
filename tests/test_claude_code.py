@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -42,6 +43,15 @@ class TestClaudeCodeClient:
         monkeypatch.setattr("os.path.isfile", lambda p: p == home_claude)
         monkeypatch.setattr("os.access", lambda p, _mode: p == home_claude)
         assert ClaudeCodeClient()._path == home_claude
+
+    def test_resolves_windows_npm_shim(self, monkeypatch):
+        # Windows: claude installed as an npm .cmd shim, not on PATH.
+        monkeypatch.delenv("CLAUDE_CODE_BIN", raising=False)
+        monkeypatch.setattr("shutil.which", lambda _name: None)
+        win_cmd = os.path.expanduser("~/AppData/Roaming/npm/claude.cmd")
+        monkeypatch.setattr("os.path.isfile", lambda p: p == win_cmd)
+        monkeypatch.setattr("os.access", lambda p, _mode: p == win_cmd)
+        assert ClaudeCodeClient()._path == win_cmd
 
     def test_env_override_full_path(self, monkeypatch):
         monkeypatch.setenv("CLAUDE_CODE_BIN", "/custom/claude")
