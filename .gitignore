@@ -7,3 +7,6 @@ __pycache__/
 .coverage
 htmlcov/
 *.egg-info/
+
+# Generated .docx template (built on demand from meeting_minutes/sample_template.py)
+meeting_minutes/templates/
