@@ -29,9 +29,25 @@ def _patch_which(monkeypatch, path="/usr/local/bin/claude"):
 
 class TestClaudeCodeClient:
     def test_missing_cli_raises_helpful_error(self, monkeypatch):
+        monkeypatch.delenv("CLAUDE_CODE_BIN", raising=False)
         monkeypatch.setattr("shutil.which", lambda _name: None)
-        with pytest.raises(RuntimeError, match="not found on PATH"):
+        monkeypatch.setattr("os.path.isfile", lambda _p: False)  # no fallback path exists
+        with pytest.raises(RuntimeError, match="not found"):
             ClaudeCodeClient()
+
+    def test_resolves_fallback_path_when_not_on_PATH(self, monkeypatch):
+        monkeypatch.delenv("CLAUDE_CODE_BIN", raising=False)
+        monkeypatch.setattr("shutil.which", lambda _name: None)  # not on PATH
+        home_claude = str(Path.home() / ".local/bin/claude")
+        monkeypatch.setattr("os.path.isfile", lambda p: p == home_claude)
+        monkeypatch.setattr("os.access", lambda p, _mode: p == home_claude)
+        assert ClaudeCodeClient()._path == home_claude
+
+    def test_env_override_full_path(self, monkeypatch):
+        monkeypatch.setenv("CLAUDE_CODE_BIN", "/custom/claude")
+        monkeypatch.setattr("os.path.isfile", lambda p: p == "/custom/claude")
+        monkeypatch.setattr("os.access", lambda p, _mode: True)
+        assert ClaudeCodeClient()._path == "/custom/claude"
 
     def test_generate_pipes_prompt_and_returns_stdout(self, monkeypatch):
         _patch_which(monkeypatch)

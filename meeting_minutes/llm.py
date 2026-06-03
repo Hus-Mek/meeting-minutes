@@ -455,17 +455,44 @@ class ClaudeCodeClient:
     it. The prompt is piped via stdin so long transcripts don't hit ARG_MAX.
     """
 
-    def __init__(self, *, binary: str | None = None, timeout: float = 600.0) -> None:
-        import shutil
+    # Common install locations, checked after PATH so it "just works" even when the
+    # app is launched from a shell without ~/.local/bin on PATH. Not a hardcoded
+    # user path — `~` expands for whoever runs it, keeping it portable.
+    _FALLBACK_PATHS = (
+        "~/.local/bin/claude",
+        "~/.claude/local/claude",
+        "/usr/local/bin/claude",
+        "/opt/homebrew/bin/claude",
+    )
 
-        name = binary or os.environ.get("CLAUDE_CODE_BIN", "claude")
-        self._path = shutil.which(name)
+    def __init__(self, *, binary: str | None = None, timeout: float = 600.0) -> None:
+        self._path = self._resolve_binary(binary)
         if not self._path:
             raise RuntimeError(
-                f"Claude Code CLI {name!r} not found on PATH. Install it "
-                "(`npm i -g @anthropic-ai/claude-code`) and log in, or set CLAUDE_CODE_BIN."
+                "Claude Code CLI not found. Install it (`npm i -g @anthropic-ai/claude-code`) "
+                "and log in, or set CLAUDE_CODE_BIN to its full path."
             )
         self._timeout = timeout
+
+    @classmethod
+    def _resolve_binary(cls, binary: str | None) -> str | None:
+        """Resolve the claude CLI: explicit arg/env > PATH > known install dirs."""
+        import shutil
+
+        explicit = binary or os.environ.get("CLAUDE_CODE_BIN")
+        if explicit:  # may be a bare name or a full path
+            p = os.path.expanduser(explicit)
+            if os.path.isfile(p) and os.access(p, os.X_OK):
+                return p
+            return shutil.which(explicit)
+        found = shutil.which("claude")
+        if found:
+            return found
+        for candidate in cls._FALLBACK_PATHS:
+            p = os.path.expanduser(candidate)
+            if os.path.isfile(p) and os.access(p, os.X_OK):
+                return p
+        return None
 
     def generate(self, system: str, user: str, *, model: str = "") -> str:
         import subprocess
