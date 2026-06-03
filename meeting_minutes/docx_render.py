@@ -21,6 +21,7 @@ from pathlib import Path
 from docx.opc.exceptions import PackageNotFoundError
 from docxtpl import DocxTemplate
 from jinja2 import TemplateError
+from jinja2.sandbox import SandboxedEnvironment
 
 from .minutes_model import Minutes, owner_org, parse_minutes
 from .sample_template import SAMPLE_TEMPLATE_PATH, build
@@ -51,12 +52,15 @@ def build_context(minutes: Minutes) -> dict:
 def fill_template(context: dict, template_path: str | Path) -> bytes:
     """Fill *template_path* with *context* and return the resulting .docx bytes.
 
-    ``autoescape=True`` so a literal ``& < >`` in Arabic/LLM text is XML-escaped
-    rather than corrupting the document. A file that is not a valid/renderable
-    .docx raises ``ValueError`` (so the web layer maps it to a clean 400)."""
+    Rendered through a Jinja ``SandboxedEnvironment`` (autoescape on): the template
+    comes from an uploaded, untrusted .docx, so the sandbox blocks SSTI/RCE chains
+    (e.g. ``{{ ''.__class__.__mro__ }}``) — they raise ``SecurityError`` and are
+    rejected. ``autoescape`` also keeps a literal ``& < >`` from corrupting the XML.
+    A file that is not a valid/renderable .docx raises ``ValueError`` (so the web
+    layer maps it to a clean 400)."""
     try:
         tpl = DocxTemplate(str(template_path))
-        tpl.render(context, autoescape=True)
+        tpl.render(context, jinja_env=SandboxedEnvironment(autoescape=True))
     except (PackageNotFoundError, TemplateError) as exc:
         raise ValueError(f"invalid or unrenderable .docx template: {exc}") from exc
     buf = BytesIO()
@@ -89,12 +93,19 @@ def docx_to_pdf(docx_bytes: bytes) -> bytes:
         out_path = os.path.join(tmp, "minutes.pdf")
         with open(in_path, "wb") as f:
             f.write(docx_bytes)
-        result = subprocess.run(  # noqa: S603 — fixed argv, no shell, validated binary
-            [soffice, "--headless", "--convert-to", "pdf", "--outdir", tmp, in_path],
-            capture_output=True,
-            timeout=SOFFICE_TIMEOUT_S,
-            check=False,
-        )
+        try:
+            result = subprocess.run(  # noqa: S603 — fixed argv, no shell, validated binary
+                [soffice, "--headless", "--convert-to", "pdf", "--outdir", tmp, in_path],
+                capture_output=True,
+                timeout=SOFFICE_TIMEOUT_S,
+                check=False,
+            )
+        except subprocess.TimeoutExpired:
+            # TimeoutExpired is not a RuntimeError; re-raise as one so the web layer
+            # maps it to a clean 503 instead of a 500 traceback.
+            raise RuntimeError(
+                f"LibreOffice PDF conversion timed out after {SOFFICE_TIMEOUT_S}s"
+            ) from None
         # LibreOffice can exit 0 yet produce nothing, so verify the file exists.
         if result.returncode != 0 or not os.path.exists(out_path):
             detail = result.stderr.decode("utf-8", "replace").strip()[:500]

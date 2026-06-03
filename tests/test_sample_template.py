@@ -160,6 +160,12 @@ def test_data_rows_are_templated_not_literal_data(doc) -> None:
 
 # --- placeholder logo PNG generator ----------------------------------------
 
+def test_build_writes_atomically_no_tmp_left(tmp_path) -> None:
+    out = st.build(tmp_path / "sample.docx")
+    assert out.exists()
+    assert not list(tmp_path.glob("*.tmp")), "atomic-write temp file was left behind"
+
+
 def test_write_solid_png_is_valid_png_of_requested_size(tmp_path) -> None:
     p = st.write_solid_png(tmp_path / "logo.png", width=120, height=40, rgb=(0x00, 0x70, 0xB9))
     data = p.read_bytes()

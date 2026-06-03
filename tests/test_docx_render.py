@@ -187,6 +187,31 @@ def test_fill_template_rejects_non_docx_file(tmp_path) -> None:
         dr.fill_template({"title": "x"}, bad)
 
 
+def test_fill_template_blocks_ssti_payload(tmp_path) -> None:
+    # An uploaded template attempting a Jinja SSTI/RCE chain is rejected by the
+    # SandboxedEnvironment (SecurityError -> ValueError), not executed.
+    from docx import Document as _Doc
+
+    evil = _Doc()
+    evil.add_paragraph("{{ ''.__class__.__mro__[1].__subclasses__() }}")
+    path = tmp_path / "evil.docx"
+    evil.save(str(path))
+    with pytest.raises(ValueError, match="invalid or unrenderable"):
+        dr.fill_template({}, path)
+
+
+def test_docx_to_pdf_timeout_raises_runtimeerror(monkeypatch) -> None:
+    monkeypatch.setattr(dr.shutil, "which", lambda name: "/usr/bin/soffice")
+
+    def raise_timeout(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout", 0))
+
+    monkeypatch.setattr(dr.subprocess, "run", raise_timeout)
+    # RuntimeError (not the raw TimeoutExpired) so the endpoint maps it to 503.
+    with pytest.raises(RuntimeError, match="timed out"):
+        dr.docx_to_pdf(b"docx-bytes")
+
+
 def test_render_docx_falls_back_to_sample_template(monkeypatch, tmp_path) -> None:
     target = tmp_path / "sample.docx"
     monkeypatch.setattr(dr, "SAMPLE_TEMPLATE_PATH", target)

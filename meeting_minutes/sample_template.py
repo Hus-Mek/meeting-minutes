@@ -330,9 +330,13 @@ def build(output_path: str | Path = SAMPLE_TEMPLATE_PATH) -> Path:
     run = thanks.add_run(THANKS)
     _style_run(run, font=BODY_FONT, size_pt=BODY_PT, bold=True)
 
+    # Write atomically: save to a sibling temp file then rename, so a concurrent
+    # reader (or a crash mid-save) never sees a truncated, unopenable .docx.
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    document.save(str(output_path))
+    tmp = output_path.with_name(f"{output_path.name}.tmp")
+    document.save(str(tmp))
+    tmp.replace(output_path)
     return output_path
 
 

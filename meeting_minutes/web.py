@@ -22,7 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 
-from . import docx_render
+from . import docx_autofill, docx_render
 from .llm import LlmClient, OpenRouterGuardError, TruncatedResponseError, get_client
 from .minutes import build_handoff_prompt, build_minutes, parse_speaker_map
 from .readai import ReadAiClient, readai_recap_text, readai_turns_to_segments
@@ -196,7 +196,8 @@ _DOCX_MEDIA = "application/vnd.openxmlformats-officedocument.wordprocessingml.do
 def _content_disposition(name: str, ext: str) -> str:
     """attachment header with an ASCII fallback + RFC 5987 UTF-8 name (Arabic titles)."""
     ascii_name = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-") or "minutes"
-    return f"attachment; filename=\"{ascii_name}.{ext}\"; filename*=UTF-8''{quote(f'{name}.{ext}')}"
+    # safe="" so '/' and other reserved chars are percent-encoded (valid RFC 5987).
+    return f"attachment; filename=\"{ascii_name}.{ext}\"; filename*=UTF-8''{quote(f'{name}.{ext}', safe='')}"
 
 
 @app.post("/api/minutes/docx")
@@ -226,11 +227,13 @@ async def api_minutes_docx(
 
     def _render() -> bytes:
         if template_bytes:
+            # The user's OWN untouched .docx → auto-detect its tables and fill them
+            # exactly (no Jinja tagging needed); the output IS their document.
             with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tf:
                 tf.write(template_bytes)
                 tpath = tf.name
             try:
-                rendered = docx_render.render_docx(minutes, tpath)
+                rendered = docx_autofill.autofill_docx(minutes, tpath)
             finally:
                 os.unlink(tpath)
         else:
