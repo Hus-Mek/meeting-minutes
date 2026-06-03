@@ -71,6 +71,7 @@ DEFAULT_MODELS = {
     "groq": DEFAULT_GROQ_MODEL,
     "openrouter": DEFAULT_OPENROUTER_MODEL,
     "anthropic": "claude-opus-4-8",
+    "claude-code": "",  # empty => use whatever model Claude Code is configured with
     "ollama": DEFAULT_LOCAL_MODEL,
     "lmstudio": DEFAULT_LOCAL_MODEL,
 }
@@ -444,13 +445,64 @@ class LocalOpenAIClient:
         raise RuntimeError(f"Local model request failed: {last_exc}")
 
 
+class ClaudeCodeClient:
+    """Generate via the local **Claude Code CLI** in headless print mode (``claude -p``).
+
+    Subscription-backed: it uses your Claude Code login, so it's **automatic, $0
+    incremental, and never touches a metered API or OpenRouter**. Requires the
+    ``claude`` CLI installed and logged in (``npm i -g @anthropic-ai/claude-code``).
+    The model is whatever Claude Code is configured to use unless ``model`` overrides
+    it. The prompt is piped via stdin so long transcripts don't hit ARG_MAX.
+    """
+
+    def __init__(self, *, binary: str | None = None, timeout: float = 600.0) -> None:
+        import shutil
+
+        name = binary or os.environ.get("CLAUDE_CODE_BIN", "claude")
+        self._path = shutil.which(name)
+        if not self._path:
+            raise RuntimeError(
+                f"Claude Code CLI {name!r} not found on PATH. Install it "
+                "(`npm i -g @anthropic-ai/claude-code`) and log in, or set CLAUDE_CODE_BIN."
+            )
+        self._timeout = timeout
+
+    def generate(self, system: str, user: str, *, model: str = "") -> str:
+        import subprocess
+
+        prompt_text = f"{system}\n\n{user}" if system else user
+        cmd = [self._path, "-p", "--output-format", "text"]
+        if model and model not in ("", "default", "claude-code"):
+            cmd += ["--model", model]
+        try:
+            proc = subprocess.run(
+                cmd,
+                input=prompt_text,
+                capture_output=True,
+                text=True,
+                timeout=self._timeout,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"Claude Code CLI timed out after {self._timeout:.0f}s"
+            ) from exc
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or "").strip()
+            raise RuntimeError(f"Claude Code CLI failed (exit {proc.returncode}): {detail}")
+        out = proc.stdout.strip()
+        if not out:
+            raise RuntimeError("Claude Code CLI returned empty output")
+        return out
+
+
 # Backend registry: name -> factory(). "ollama" and "lmstudio" are the same
 # OpenAI-compatible client with different default ports; either is overridable via
-# LOCAL_LLM_BASE_URL.
+# LOCAL_LLM_BASE_URL. "claude-code" shells out to the local Claude Code CLI.
 _BACKENDS: dict[str, Callable[[], LlmClient]] = {
     "groq": lambda: GroqClient(),
     "openrouter": lambda: OpenRouterClient(),
     "anthropic": lambda: AnthropicClient(),
+    "claude-code": lambda: ClaudeCodeClient(),
     "ollama": lambda: LocalOpenAIClient(default_base_url=_DEFAULT_OLLAMA_URL),
     "lmstudio": lambda: LocalOpenAIClient(default_base_url=_DEFAULT_LMSTUDIO_URL),
 }

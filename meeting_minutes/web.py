@@ -19,7 +19,7 @@ from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 
 from .llm import LlmClient, OpenRouterGuardError, TruncatedResponseError, get_client
-from .minutes import build_minutes, parse_speaker_map
+from .minutes import build_handoff_prompt, build_minutes, parse_speaker_map
 from .readai import ReadAiClient, readai_recap_text, readai_turns_to_segments
 from .transcript import (
     MAX_TRANSCRIPT_BYTES,
@@ -137,6 +137,21 @@ async def api_minutes(
     segments = _read_segments(raw, _fields(speaker_key, start_key, end_key, text_key))
     try:
         smap = parse_speaker_map(speaker_map)
+        if backend == "handoff":
+            # No LLM call: return the assembled prompt for an agent (Cowork / Claude
+            # Code) to write the محضر on its subscription. Pattern-2 handoff in the GUI.
+            minutes = build_handoff_prompt(
+                segments=segments,
+                notes=notes,
+                title=title,
+                date=date,
+                time=time,
+                location=location,
+                attendees=attendees,
+                recap=recap,
+                speaker_map=smap or None,
+            )
+            return {"minutes": minutes, "meta": {"backend": "handoff", "segments": len(segments)}}
         client = make_client(backend)  # raises ValueError(unknown)/NotImplementedError/RuntimeError
         minutes = await run_in_threadpool(
             build_minutes,

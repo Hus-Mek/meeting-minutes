@@ -169,7 +169,9 @@ export function InputsPane({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="anthropic">Anthropic Claude (best Arabic)</SelectItem>
+                  <SelectItem value="claude-code">Claude Code (subscription · automatic, no API key)</SelectItem>
+                  <SelectItem value="handoff">Hand off — copy prompt to an agent (no call)</SelectItem>
+                  <SelectItem value="anthropic">Anthropic Claude (API key)</SelectItem>
                   <SelectItem value="openrouter">OpenRouter — Sonnet 4.6</SelectItem>
                   <SelectItem value="groq">Groq — Llama 3.3 70B (fast)</SelectItem>
                   <SelectItem value="lmstudio">LM Studio — local (free)</SelectItem>
@@ -177,8 +179,9 @@ export function InputsPane({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Anthropic/OpenRouter need API keys. Local backends need a running server
-                + a model id below (see docs/LOCAL_MODELS.md).
+                Claude Code = automatic on your subscription via the local CLI (no API key; install
+                <code> @anthropic-ai/claude-code</code>). Hand off = returns the prompt to paste into
+                an agent. Anthropic/OpenRouter need API keys; local backends need a running server.
               </p>
             </div>
             <p className="text-xs text-muted-foreground">JSON transcripts only — field mapping:</p>

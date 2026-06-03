@@ -53,9 +53,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--backend",
         default="groq",
-        choices=["groq", "openrouter", "anthropic", "ollama", "lmstudio"],
-        help="LLM backend (default: groq; anthropic = Claude via ANTHROPIC_API_KEY; "
-        "openrouter = Sonnet via OPENROUTER_API_KEY; ollama/lmstudio = local server)",
+        choices=["groq", "openrouter", "anthropic", "claude-code", "ollama", "lmstudio"],
+        help="LLM backend (default: groq; claude-code = local Claude Code CLI on your "
+        "subscription, no API key; anthropic = Claude via ANTHROPIC_API_KEY; openrouter "
+        "= Sonnet via OPENROUTER_API_KEY; ollama/lmstudio = local server)",
     )
     parser.add_argument(
         "--model",

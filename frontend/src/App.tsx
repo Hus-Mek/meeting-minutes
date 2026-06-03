@@ -23,7 +23,7 @@ const DEFAULT_OPTIONS: MinutesOptions = {
   location: "",
   attendees: "",
   recap: "",
-  backend: "openrouter",
+  backend: "claude-code",
   model: "",
   speakerKey: "speaker",
   startKey: "start",
