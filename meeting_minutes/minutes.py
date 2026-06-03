@@ -285,6 +285,9 @@ def build_minutes(
         segments = _apply_speaker_map(segments, speaker_map)
     resolved_model = model or default_model_for(backend)
     llm = client or get_client(backend)
+    # Size the input budget against the *backend's* real context window: local
+    # models have small windows, so this forces map-reduce to split appropriately.
+    budget = max_input_tokens(resolved_model, backend=backend)
     return generate_minutes(
         segments=segments,
         notes=notes,
@@ -296,6 +299,7 @@ def build_minutes(
         recap=recap,
         client=llm,
         model=resolved_model,
+        input_token_budget=budget,
     )
 
 

@@ -171,10 +171,13 @@ export function InputsPane({
                 <SelectContent>
                   <SelectItem value="openrouter">OpenRouter — Sonnet 4.6 (best Arabic)</SelectItem>
                   <SelectItem value="groq">Groq — Llama 3.3 70B (fast, free)</SelectItem>
+                  <SelectItem value="lmstudio">LM Studio — local (free, private)</SelectItem>
+                  <SelectItem value="ollama">Ollama — local (free, private)</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                OpenRouter needs OPENROUTER_API_KEY on the server.
+                OpenRouter needs OPENROUTER_API_KEY. Local backends need a running
+                LM Studio / Ollama server + a model id below (see docs/LOCAL_MODELS.md).
               </p>
             </div>
             <p className="text-xs text-muted-foreground">JSON transcripts only — field mapping:</p>

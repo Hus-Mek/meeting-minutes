@@ -49,8 +49,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--backend",
         default="groq",
-        choices=["groq", "openrouter", "ollama"],
-        help="LLM backend (default: groq; openrouter = Sonnet via OPENROUTER_API_KEY)",
+        choices=["groq", "openrouter", "ollama", "lmstudio"],
+        help="LLM backend (default: groq; openrouter = Sonnet via OPENROUTER_API_KEY; "
+        "ollama/lmstudio = local OpenAI-compatible server, free & private)",
     )
     parser.add_argument(
         "--model",

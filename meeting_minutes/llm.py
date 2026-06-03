@@ -22,36 +22,68 @@ DEFAULT_OPENROUTER_MODEL = "anthropic/claude-sonnet-4.6"
 
 # Per-model context windows (input + output tokens). Used to size single-pass vs
 # map-reduce. Conservative fallback for unknown models.
+#
+# Local (Ollama) entries are the num_ctx we actually run the model with — NOT the
+# model's theoretical maximum. Ollama defaults to a stingy 4096 unless a Modelfile
+# raises it, and on a shared-memory iGPU the KV cache competes with the weights for
+# VRAM, so we keep these modest and match them in the shipped Modelfiles. Arabic
+# specialists (ALLaM/Yehia/Fanar) are 4K-native and cannot exceed it.
 MODEL_CONTEXT_WINDOWS = {
     "llama-3.3-70b-versatile": 128_000,
     "llama-3.1-70b-versatile": 128_000,
     "llama-3.1-8b-instant": 128_000,
     "anthropic/claude-sonnet-4.6": 200_000,
     "anthropic/claude-sonnet-4.5": 200_000,
+    # Local Ollama models (key = the Ollama tag; value = shipped num_ctx).
+    "iKhalid/ALLaM:7b": 4_096,
+    "yehia7b": 4_096,
+    "QCRI/Fanar-1-9B-Instruct": 4_096,
+    "gemma4:e4b": 8_192,
+    "qwen3:8b": 8_192,
 }
 DEFAULT_CONTEXT_WINDOW = 128_000
+
+# Backends whose models run locally (Ollama / LM Studio / llama.cpp server). They
+# have small real context windows and can't sustain huge outputs, so budgeting
+# reserves less for output and falls back to a small window for unregistered tags.
+LOCAL_BACKENDS = frozenset({"ollama", "lmstudio"})
+DEFAULT_LOCAL_CONTEXT_WINDOW = 8_192
 
 # Reserve room for the model's own output so a near-full input still leaves space
 # to write the minutes. Detailed Arabic minutes can be long, so this is generous.
 DEFAULT_MAX_OUTPUT_TOKENS = 16_384
 
+# Local models can't reliably sustain a 16k-token answer (small models drift past
+# ~4k of structured output), and their context windows are small, so cap output
+# lower. Map-reduce assembles long minutes from bounded sections regardless.
+DEFAULT_LOCAL_MAX_OUTPUT_TOKENS = 4_096
+
 # Network resilience defaults (Groq SDK retries 429/5xx/connection errors).
 DEFAULT_TIMEOUT_SECONDS = 90.0
 DEFAULT_MAX_RETRIES = 4
 
-# Per-backend default model — resolved when --model is omitted.
+# Per-backend default model — resolved when --model is omitted. The local default
+# is the best Arabic-writing model that fits a 16GB / ~9GB-VRAM box; override with
+# --model after the local benchmark picks a winner. (LM Studio identifies models
+# by the loaded GGUF's id, so its default is usually overridden in practice.)
+DEFAULT_LOCAL_MODEL = "iKhalid/ALLaM:7b"
 DEFAULT_MODELS = {
     "groq": DEFAULT_GROQ_MODEL,
     "openrouter": DEFAULT_OPENROUTER_MODEL,
-    "ollama": "llama3.1",
+    "ollama": DEFAULT_LOCAL_MODEL,
+    "lmstudio": DEFAULT_LOCAL_MODEL,
 }
 
-# Env vars that could silently redirect a client to OpenRouter.
+# Env vars that could silently redirect a client to OpenRouter — including the
+# local-server overrides, so a stray LOCAL_LLM_BASE_URL=openrouter.ai is caught
+# instead of routing "local" calls through metered OpenRouter.
 _BASE_URL_ENV_VARS = (
     "OPENAI_BASE_URL",
     "OPENAI_API_BASE",
     "ANTHROPIC_BASE_URL",
     "GROQ_BASE_URL",
+    "LOCAL_LLM_BASE_URL",
+    "OLLAMA_BASE_URL",
 )
 _PROXY_ENV_VARS = (
     "HTTP_PROXY",
@@ -84,10 +116,65 @@ def default_model_for(backend: str) -> str:
     return DEFAULT_MODELS.get(backend, DEFAULT_GROQ_MODEL)
 
 
-def max_input_tokens(model: str, *, reserved_output: int = DEFAULT_MAX_OUTPUT_TOKENS) -> int:
-    """Token budget available for the *input* of one call to ``model``."""
-    window = MODEL_CONTEXT_WINDOWS.get(model, DEFAULT_CONTEXT_WINDOW)
-    return max(1, window - reserved_output)
+def _env_int(name: str, *, minimum: int) -> int | None:
+    """Read a positive int env var, or None if unset/invalid."""
+    raw = os.environ.get(name, "").strip()
+    if raw.isdigit():
+        return max(minimum, int(raw))
+    return None
+
+
+def context_window_for(model: str, *, backend: str | None = None) -> int:
+    """The context window we run ``model`` with (input + output tokens).
+
+    For local backends, ``LOCAL_LLM_NUM_CTX`` wins so it always matches the context
+    length you actually loaded the model with (LM Studio / Ollama num_ctx) — local
+    model ids are user-chosen, so an env override is the only reliable source of
+    truth. Otherwise a registered window wins; otherwise local falls back to a small
+    window (not the 128k cloud default) so map-reduce splits aggressively enough.
+    """
+    if backend in LOCAL_BACKENDS:
+        override = _env_int("LOCAL_LLM_NUM_CTX", minimum=512)
+        if override is not None:
+            return override
+    if model in MODEL_CONTEXT_WINDOWS:
+        return MODEL_CONTEXT_WINDOWS[model]
+    if backend in LOCAL_BACKENDS:
+        return DEFAULT_LOCAL_CONTEXT_WINDOW
+    return DEFAULT_CONTEXT_WINDOW
+
+
+def _local_max_output(explicit: int | None = None) -> int:
+    """Resolve a local model's output cap: explicit arg > env > default."""
+    if explicit is not None:
+        return explicit
+    return _env_int("LOCAL_LLM_MAX_OUTPUT_TOKENS", minimum=256) or DEFAULT_LOCAL_MAX_OUTPUT_TOKENS
+
+
+def max_output_for(model: str, *, backend: str | None = None) -> int:
+    """Output-token cap to reserve/allow for ``model`` — smaller for local backends."""
+    if backend in LOCAL_BACKENDS:
+        return _local_max_output()
+    return DEFAULT_MAX_OUTPUT_TOKENS
+
+
+def max_input_tokens(
+    model: str,
+    *,
+    reserved_output: int | None = None,
+    backend: str | None = None,
+) -> int:
+    """Token budget available for the *input* of one call to ``model``.
+
+    Never reserves more than half the window, so a small-context local model
+    (e.g. ALLaM's 4k) still gets a positive, usable input budget instead of
+    collapsing to 1 token.
+    """
+    window = context_window_for(model, backend=backend)
+    if reserved_output is None:
+        reserved_output = max_output_for(model, backend=backend)
+    reserved = min(reserved_output, window // 2)
+    return max(1, window - reserved)
 
 
 class LlmClient(Protocol):
@@ -215,18 +302,104 @@ class OpenRouterClient:
         raise RuntimeError(f"OpenRouter request failed: {last_exc}")
 
 
-def _ollama_stub(*_args, **_kwargs):
-    raise NotImplementedError(
-        "Ollama backend not implemented yet. It would POST to a local Ollama server "
-        "for a fully free, private run. Use --backend groq for now."
-    )
+_DEFAULT_OLLAMA_URL = "http://localhost:11434/v1"
+_DEFAULT_LMSTUDIO_URL = "http://localhost:1234/v1"
 
 
-# Backend registry: name -> factory().
+class LocalOpenAIClient:
+    """Local models via an OpenAI-compatible server: Ollama, LM Studio, or
+    llama.cpp ``--server`` / vLLM.
+
+    Free and private — nothing leaves the machine. The base URL resolves from
+    (in order) the ``base_url`` arg, the ``LOCAL_LLM_BASE_URL`` env var, the
+    ``OLLAMA_BASE_URL`` env var, then the per-backend default. No API key is needed
+    for a local server, but an optional ``OLLAMA_API_KEY``/``LOCAL_LLM_API_KEY`` is
+    sent if set (some proxies want one). Shares the OpenRouter client's
+    retry/truncation handling — identical OpenAI chat schema.
+    """
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        *,
+        base_url: str | None = None,
+        default_base_url: str = _DEFAULT_OLLAMA_URL,
+        timeout: float = DEFAULT_TIMEOUT_SECONDS,
+        max_retries: int = DEFAULT_MAX_RETRIES,
+        max_output_tokens: int | None = None,
+    ) -> None:
+        # Belt-and-suspenders: guard here too (not just in get_client) so direct
+        # construction can't route a "local" call through OpenRouter.
+        assert_no_openrouter()
+        import httpx
+
+        # Precedence: explicit arg > env override > the backend's default port.
+        base = (
+            base_url
+            or os.environ.get("LOCAL_LLM_BASE_URL")
+            or os.environ.get("OLLAMA_BASE_URL")
+            or default_base_url
+        )
+        self._url = f"{base.rstrip('/')}/chat/completions"
+        # A local server needs no key; only attach one if explicitly provided.
+        self._key = (
+            api_key or os.environ.get("LOCAL_LLM_API_KEY") or os.environ.get("OLLAMA_API_KEY", "")
+        )
+        self._timeout = timeout
+        self._max_retries = max_retries
+        self._max_output_tokens = _local_max_output(max_output_tokens)
+        self._httpx = httpx
+
+    def generate(self, system: str, user: str, *, model: str = DEFAULT_LOCAL_MODEL) -> str:
+        payload = {
+            "model": model,
+            "temperature": 0.2,
+            "max_tokens": self._max_output_tokens,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+        }
+        headers = {"Content-Type": "application/json"}
+        if self._key:
+            headers["Authorization"] = f"Bearer {self._key}"
+        last_exc: Exception | None = None
+        for attempt in range(self._max_retries + 1):
+            try:
+                resp = self._httpx.post(
+                    self._url, json=payload, headers=headers, timeout=self._timeout
+                )
+                if resp.status_code in _RETRYABLE_STATUS and attempt < self._max_retries:
+                    continue
+                resp.raise_for_status()
+                data = resp.json()
+                choice = data["choices"][0]
+                if choice.get("finish_reason") == "length":
+                    raise TruncatedResponseError(
+                        f"Local model response hit the {self._max_output_tokens}-token cap "
+                        "and was truncated; lower the input budget (the map-reduce window) or "
+                        "raise the model's num_ctx so it has room to finish."
+                    )
+                return choice["message"]["content"] or ""
+            except self._httpx.HTTPError as exc:
+                last_exc = exc
+                if attempt >= self._max_retries:
+                    raise RuntimeError(
+                        f"Local model request to {self._url} failed: {exc}. Is the local "
+                        "server running (Ollama `ollama serve`, or LM Studio's server) and "
+                        "the model loaded?"
+                    ) from exc
+        raise RuntimeError(f"Local model request failed: {last_exc}")
+
+
+# Backend registry: name -> factory(). "ollama" and "lmstudio" are the same
+# OpenAI-compatible client with different default ports; either is overridable via
+# LOCAL_LLM_BASE_URL.
 _BACKENDS: dict[str, Callable[[], LlmClient]] = {
     "groq": lambda: GroqClient(),
     "openrouter": lambda: OpenRouterClient(),
-    "ollama": _ollama_stub,
+    "ollama": lambda: LocalOpenAIClient(default_base_url=_DEFAULT_OLLAMA_URL),
+    "lmstudio": lambda: LocalOpenAIClient(default_base_url=_DEFAULT_LMSTUDIO_URL),
 }
 
 
