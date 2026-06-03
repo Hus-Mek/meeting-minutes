@@ -34,6 +34,12 @@ class TestSystemPrompt:
         result = build_system_prompt(title="t", date="d")
         assert "TRANSCRIPT" in result
 
+    def test_transliterates_english_g_to_qaf_for_saudi_pronunciation(self):
+        # In Saudi Arabic ق is pronounced as a hard "g", so a transliterated English
+        # "g" maps to ق (e.g. Algahtani -> القحطاني), not ج or غ.
+        result = build_system_prompt(title="t", date="d")
+        assert "القاف" in result and "القحطاني" in result
+
     def test_synthesis_grounds_in_summaries(self):
         result = build_system_prompt(title="t", date="d", for_synthesis=True)
         assert "SUMMARIES" in result
