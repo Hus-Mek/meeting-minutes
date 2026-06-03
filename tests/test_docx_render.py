@@ -180,6 +180,13 @@ def test_ensure_sample_template_generates_when_missing(monkeypatch, tmp_path) ->
     Document(str(target))  # opens as a valid docx
 
 
+def test_fill_template_rejects_non_docx_file(tmp_path) -> None:
+    bad = tmp_path / "not.docx"
+    bad.write_bytes(b"plain text, not a zip")
+    with pytest.raises(ValueError, match="invalid or unrenderable"):
+        dr.fill_template({"title": "x"}, bad)
+
+
 def test_render_docx_falls_back_to_sample_template(monkeypatch, tmp_path) -> None:
     target = tmp_path / "sample.docx"
     monkeypatch.setattr(dr, "SAMPLE_TEMPLATE_PATH", target)

@@ -18,7 +18,9 @@ import tempfile
 from io import BytesIO
 from pathlib import Path
 
+from docx.opc.exceptions import PackageNotFoundError
 from docxtpl import DocxTemplate
+from jinja2 import TemplateError
 
 from .minutes_model import Minutes, owner_org, parse_minutes
 from .sample_template import SAMPLE_TEMPLATE_PATH, build
@@ -50,9 +52,13 @@ def fill_template(context: dict, template_path: str | Path) -> bytes:
     """Fill *template_path* with *context* and return the resulting .docx bytes.
 
     ``autoescape=True`` so a literal ``& < >`` in Arabic/LLM text is XML-escaped
-    rather than corrupting the document."""
-    tpl = DocxTemplate(str(template_path))
-    tpl.render(context, autoescape=True)
+    rather than corrupting the document. A file that is not a valid/renderable
+    .docx raises ``ValueError`` (so the web layer maps it to a clean 400)."""
+    try:
+        tpl = DocxTemplate(str(template_path))
+        tpl.render(context, autoescape=True)
+    except (PackageNotFoundError, TemplateError) as exc:
+        raise ValueError(f"invalid or unrenderable .docx template: {exc}") from exc
     buf = BytesIO()
     tpl.save(buf)
     return buf.getvalue()

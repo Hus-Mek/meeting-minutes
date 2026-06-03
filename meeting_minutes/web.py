@@ -9,15 +9,20 @@ Run locally: ``python -m meeting_minutes.web`` then open http://localhost:8000
 
 from __future__ import annotations
 
+import os
+import re
+import tempfile
 from pathlib import Path
 from typing import Any, Callable
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from starlette.concurrency import run_in_threadpool
 from starlette.requests import Request
 
+from . import docx_render
 from .llm import LlmClient, OpenRouterGuardError, TruncatedResponseError, get_client
 from .minutes import build_handoff_prompt, build_minutes, parse_speaker_map
 from .readai import ReadAiClient, readai_recap_text, readai_turns_to_segments
@@ -181,6 +186,67 @@ async def api_minutes(
         status = 500 if "API_KEY" in msg else 502
         raise HTTPException(status_code=status, detail=msg)
     return {"minutes": minutes, "meta": {"backend": backend, "segments": len(segments)}}
+
+
+# .docx with embedded fonts + a logo is comfortably under this; reject pathological uploads.
+MAX_TEMPLATE_BYTES = 25 * 1024 * 1024
+_DOCX_MEDIA = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+
+def _content_disposition(name: str, ext: str) -> str:
+    """attachment header with an ASCII fallback + RFC 5987 UTF-8 name (Arabic titles)."""
+    ascii_name = re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-") or "minutes"
+    return f"attachment; filename=\"{ascii_name}.{ext}\"; filename*=UTF-8''{quote(f'{name}.{ext}')}"
+
+
+@app.post("/api/minutes/docx")
+async def api_minutes_docx(
+    minutes: str = Form(...),
+    template: UploadFile | None = File(None),
+    template_id: str = Form(""),
+    format: str = Form("docx"),
+    filename: str = Form("minutes"),
+) -> Response:
+    """Render محضر Markdown into a .docx template and return the file.
+
+    The template is either an uploaded .docx (the user's own, kept only for this
+    request) or the bundled synthetic one. ``format=pdf`` converts via headless
+    LibreOffice. No LLM/network is touched — the minutes Markdown is already written.
+    """
+    fmt = format.lower().strip()
+    if fmt not in ("docx", "pdf"):
+        raise HTTPException(status_code=400, detail="format must be 'docx' or 'pdf'")
+
+    template_bytes: bytes | None = None
+    if template is not None:
+        template_bytes = await template.read()
+        if len(template_bytes) > MAX_TEMPLATE_BYTES:
+            raise HTTPException(status_code=413, detail="template file is too large")
+        template_bytes = template_bytes or None  # treat an empty upload as "no template"
+
+    def _render() -> bytes:
+        if template_bytes:
+            with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tf:
+                tf.write(template_bytes)
+                tpath = tf.name
+            try:
+                rendered = docx_render.render_docx(minutes, tpath)
+            finally:
+                os.unlink(tpath)
+        else:
+            rendered = docx_render.render_docx(minutes)  # bundled synthetic template
+        return docx_render.docx_to_pdf(rendered) if fmt == "pdf" else rendered
+
+    try:
+        data = await run_in_threadpool(_render)
+    except ValueError as exc:  # malformed template / bad input
+        raise HTTPException(status_code=400, detail=str(exc))
+    except RuntimeError as exc:  # LibreOffice missing or PDF conversion failed
+        raise HTTPException(status_code=503, detail=str(exc))
+
+    media = "application/pdf" if fmt == "pdf" else _DOCX_MEDIA
+    headers = {"Content-Disposition": _content_disposition(filename or "minutes", fmt)}
+    return Response(content=data, media_type=media, headers=headers)
 
 
 @app.post("/api/readai/fetch")
