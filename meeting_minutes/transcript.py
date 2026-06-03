@@ -1,9 +1,12 @@
-"""Load meeting transcripts in two shapes, auto-detected.
+"""Load meeting transcripts in three shapes, auto-detected.
 
 1. **Diarized JSON** — a list of segments with speaker/start/end/text. Field names
    vary between tools, so the loader is field-configurable via ``FieldMap``.
 2. **Teams/Zoom text export** — ``M:SS - Speaker`` headers followed by the spoken
    text (the common meeting-recording export). Parsed by ``parse_text_transcript``.
+3. **WebVTT** — the format Microsoft Teams stores transcripts in (fetched via the
+   Microsoft Graph API). ``<v Speaker>`` voice spans carry diarization. Parsed by
+   ``parse_vtt``.
 
 ``parse_any`` sniffs the content and routes to the right parser.
 """
@@ -160,8 +163,77 @@ def parse_text_transcript(raw: str) -> tuple[Segment, ...]:
     return tuple(segments)
 
 
+# --- WebVTT (Microsoft Teams transcript export, fetched via Graph) ------------
+# A cue's timing line: "00:00:01.000 --> 00:00:05.500 <optional settings>".
+_VTT_TIMING_RE = re.compile(
+    r"^\s*(\d{1,2}:\d{2}(?::\d{2})?\.\d{1,3})\s*-->\s*(\d{1,2}:\d{2}(?::\d{2})?\.\d{1,3})"
+)
+# Teams labels the speaker with a voice span: "<v Alice Smith>spoken text</v>".
+_VTT_VOICE_RE = re.compile(r"<v\s+([^>]+?)>(.*?)</v>", re.DOTALL)
+_VTT_TAG_RE = re.compile(r"<[^>]+>")
+_VTT_SPEAKER_FALLBACK = "Unknown"
+
+
+def looks_like_vtt(raw: str) -> bool:
+    """Cheap sniff: a WebVTT file starts with the ``WEBVTT`` magic line."""
+    return raw.lstrip().upper().startswith("WEBVTT")
+
+
+def _vtt_stamp_to_seconds(stamp: str) -> float:
+    """Convert a VTT timestamp (``HH:MM:SS.mmm`` or ``MM:SS.mmm``) to seconds."""
+    clock, _, millis = stamp.partition(".")
+    parts = [int(p) for p in clock.split(":")]
+    if len(parts) == 3:
+        hours, minutes, secs = parts
+    elif len(parts) == 2:
+        hours, minutes, secs = 0, parts[0], parts[1]
+    else:
+        raise ValueError(f"malformed VTT timestamp: {stamp!r}")
+    fractional = int(millis.ljust(3, "0")[:3]) / 1000.0 if millis else 0.0
+    return hours * 3600 + minutes * 60 + secs + fractional
+
+
+def parse_vtt(raw: str) -> tuple[Segment, ...]:
+    """Parse a WebVTT transcript (e.g. a Microsoft Teams export) into Segments.
+
+    Cues are blank-line separated; each may carry an optional identifier line
+    before the ``-->`` timing line. The speaker is read from a ``<v Name>`` voice
+    span when present (Teams always emits one), falling back to ``Unknown``. All
+    markup is stripped from the spoken text. Header/``NOTE``/``STYLE`` blocks
+    (those without a timing line) are skipped. Results are sorted chronologically,
+    matching :func:`parse_transcript`.
+    """
+    normalized = raw.replace("\r\n", "\n").replace("\r", "\n").strip()
+    segments: list[Segment] = []
+    for block in re.split(r"\n\s*\n", normalized):
+        lines = block.split("\n")
+        timing_idx = next((i for i, ln in enumerate(lines) if "-->" in ln), None)
+        if timing_idx is None:
+            continue  # WEBVTT header, NOTE, or STYLE block — no cue here
+        match = _VTT_TIMING_RE.match(lines[timing_idx])
+        if not match:
+            continue
+        start = _vtt_stamp_to_seconds(match.group(1))
+        end = _vtt_stamp_to_seconds(match.group(2))
+        payload = "\n".join(lines[timing_idx + 1 :]).strip()
+        if not payload:
+            continue
+        voice = _VTT_VOICE_RE.search(payload)
+        speaker = voice.group(1).strip() if voice else _VTT_SPEAKER_FALLBACK
+        text = " ".join(_VTT_TAG_RE.sub("", payload).split())
+        if text:
+            segments.append(
+                Segment(speaker=speaker, start_seconds=start, end_seconds=end, text=text)
+            )
+    if not segments:
+        raise ValueError("no timed cues found — is this a WebVTT (Teams) transcript?")
+    return tuple(sorted(segments, key=lambda s: (s.start_seconds, s.end_seconds)))
+
+
 def parse_any(raw: str, *, fields: FieldMap | None = None) -> tuple[Segment, ...]:
-    """Auto-detect JSON vs Teams text and parse into Segments."""
+    """Auto-detect WebVTT, diarized JSON, or Teams text and parse into Segments."""
+    if looks_like_vtt(raw):
+        return parse_vtt(raw)
     if looks_like_json(raw):
         try:
             data = json.loads(raw)
