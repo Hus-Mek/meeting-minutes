@@ -49,8 +49,9 @@ Intel GPUs, and a built‑in OpenAI‑compatible server. Refs:
    |---|---|---|
    | ALLaM‑7B‑Instruct | `Omartificial-Intelligence-Space/ALLaM-7B-Instruct-preview-Q4_K_M-GGUF` (or `eltay89/ALLaM-7B-Instruct-GGUF`) | Arabic‑writing leader |
    | Yehia‑7B‑preview | search `Yehia-7B-preview GGUF` (Navid‑AI; community quant) | Arabic generation leader |
-   | Gemma 4 E4B | `unsloth/gemma-4-E4B-it-GGUF` or `ggml-org/gemma-4-E4B-it-GGUF` | generalist |
-   | Qwen3‑8B | `Qwen/Qwen3-8B-GGUF` or `bartowski/Qwen_Qwen3-8B-GGUF` | generalist |
+   | **Qwen3.5‑9B** | `unsloth/Qwen3.5-9B-GGUF` | **strongest generalist** — 201 langs incl. Arabic, 262K ctx. **LM Studio only** (Qwen3.5 GGUFs don't load in Ollama yet); run text‑only. |
+   | Gemma 4 E4B | `unsloth/gemma-4-E4B-it-GGUF` or `ggml-org/gemma-4-E4B-it-GGUF` | generalist, lighter |
+   | Qwen3‑8B | `Qwen/Qwen3-8B-GGUF` or `bartowski/Qwen_Qwen3-8B-GGUF` | generalist (older; Qwen3.5‑9B supersedes if it fits) |
    | Fanar‑1‑9B | search `Fanar-1-9B-Instruct GGUF` (skip if none published) | knowledge generalist |
 3. **Load a model** and in the loader set:
    - **GPU Offload / GPU Layers → max** (the slider's recommended max for your VRAM).

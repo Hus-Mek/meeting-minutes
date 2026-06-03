@@ -10,7 +10,7 @@ Run locally: ``python -m meeting_minutes.web`` then open http://localhost:8000
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse
@@ -20,6 +20,7 @@ from starlette.requests import Request
 
 from .llm import LlmClient, OpenRouterGuardError, TruncatedResponseError, get_client
 from .minutes import build_minutes, parse_speaker_map
+from .readai import ReadAiClient, readai_recap_text, readai_turns_to_segments
 from .transcript import (
     MAX_TRANSCRIPT_BYTES,
     FieldMap,
@@ -42,6 +43,11 @@ def default_client_factory() -> ClientFactory:
 _DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
 app = FastAPI(title="Meeting Minutes", docs_url=None, redoc_url=None)
+
+# read.ai webhook receiver (dormant until READAI_WEBHOOK_SECRET is set).
+from .readai_web import router as readai_router  # noqa: E402
+
+app.include_router(readai_router)
 
 
 @app.exception_handler(HTTPException)
@@ -160,6 +166,55 @@ async def api_minutes(
         status = 500 if "API_KEY" in msg else 502
         raise HTTPException(status_code=status, detail=msg)
     return {"minutes": minutes, "meta": {"backend": backend, "segments": len(segments)}}
+
+
+@app.post("/api/readai/fetch")
+async def readai_fetch(
+    meeting_id: str = Form(...), access_token: str | None = Form(None)
+) -> dict[str, Any]:
+    """Fetch transcript and recap from read.ai by meeting ID (using saved tokens or provided access_token).
+
+    If `access_token` is provided, it updates the stored token.
+    Returns {"transcript": {...}, "segments": [...], "recap": "..."} or error.
+    """
+
+    async def _fetch() -> dict[str, Any]:
+        try:
+            client = ReadAiClient()
+            if access_token:
+                # TODO: update token storage if new access_token provided
+                pass
+
+            transcript = client.get_transcript(meeting_id)
+            segments = readai_turns_to_segments(transcript)
+            recap_meeting = client.get_recap(meeting_id)
+            recap = readai_recap_text(recap_meeting)
+
+            return {
+                "transcript": transcript,
+                "segments": [
+                    {
+                        "speaker": s.speaker,
+                        "start": s.start_seconds,
+                        "end": s.end_seconds,
+                        "text": s.text,
+                    }
+                    for s in segments
+                ],
+                "recap": recap,
+            }
+        except RuntimeError as exc:
+            raise ValueError(f"read.ai API error: {exc}")
+        except Exception as exc:
+            raise ValueError(f"read.ai fetch failed: {exc}")
+
+    try:
+        result = await run_in_threadpool(_fetch)
+        return result
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
 
 
 # Serve the built SPA last so /api/* takes precedence. Graceful message if unbuilt.
