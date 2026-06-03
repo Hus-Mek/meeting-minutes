@@ -37,8 +37,8 @@ class TestClaudeCodeClient:
         _patch_which(monkeypatch)
         captured = {}
 
-        def fake_run(cmd, input=None, capture_output=None, text=None, timeout=None):
-            captured.update(cmd=cmd, input=input, timeout=timeout)
+        def fake_run(cmd, input=None, capture_output=None, text=None, timeout=None, cwd=None):
+            captured.update(cmd=cmd, input=input, timeout=timeout, cwd=cwd)
             return _Proc(stdout="## محضر اجتماع\nمحتوى")
 
         monkeypatch.setattr(subprocess, "run", fake_run)
@@ -49,6 +49,10 @@ class TestClaudeCodeClient:
         assert "--output-format" in captured["cmd"] and "text" in captured["cmd"]
         assert "--model" not in captured["cmd"]  # empty model => CC default
         assert "SYS contract" in captured["input"] and "USER transcript" in captured["input"]
+        # lean invocation: no MCP servers, no user hooks/rules, isolated cwd
+        assert "--strict-mcp-config" in captured["cmd"]
+        assert "--setting-sources" in captured["cmd"] and "project,local" in captured["cmd"]
+        assert captured["cwd"] is not None
 
     def test_generate_passes_model_when_set(self, monkeypatch):
         _patch_which(monkeypatch)

@@ -469,19 +469,31 @@ class ClaudeCodeClient:
 
     def generate(self, system: str, user: str, *, model: str = "") -> str:
         import subprocess
+        import tempfile
 
         prompt_text = f"{system}\n\n{user}" if system else user
-        cmd = [self._path, "-p", "--output-format", "text"]
+        # Lean invocation — this is plain text generation, not an agent task, so skip
+        # the heavy startup: no MCP servers, and no user-level hooks/rules (the
+        # SessionStart hook alone makes its own LLM call on every invocation). Running
+        # in an empty cwd avoids loading any project CLAUDE.md/hooks. Auth is
+        # unaffected — it lives in ~/.claude/.credentials.json, not in settings.
+        cmd = [
+            self._path, "-p", "--output-format", "text",
+            "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
+            "--setting-sources", "project,local",
+        ]
         if model and model not in ("", "default", "claude-code"):
             cmd += ["--model", model]
         try:
-            proc = subprocess.run(
-                cmd,
-                input=prompt_text,
-                capture_output=True,
-                text=True,
-                timeout=self._timeout,
-            )
+            with tempfile.TemporaryDirectory() as workdir:
+                proc = subprocess.run(
+                    cmd,
+                    input=prompt_text,
+                    capture_output=True,
+                    text=True,
+                    timeout=self._timeout,
+                    cwd=workdir,
+                )
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(
                 f"Claude Code CLI timed out after {self._timeout:.0f}s"
