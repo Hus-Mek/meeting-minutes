@@ -151,18 +151,22 @@ def _fill_summary(doc, minutes: Minutes) -> None:
     if table is None or len(table.rows) < 2:
         return
     body = table.rows[1].cells[0]
-    first = body.paragraphs[0]
-    _set_paragraph_text(first, minutes.summary or _DASH)
-    for extra in body.paragraphs[1:]:  # clear any sample body paragraphs
+    paras = body.paragraphs
+    summary_p = paras[0]
+    # The template's discussion points are a real Word list paragraph (its own font,
+    # bullet/numbering, and spacing). Clone THAT paragraph for each point — not the
+    # summary paragraph — so font + bullet + spacing match the template exactly. The
+    # list marker comes from the paragraph's own numbering, so no literal "- ".
+    bullet_template = copy.deepcopy(paras[1]._p) if len(paras) > 1 else copy.deepcopy(summary_p._p)
+    _set_paragraph_text(summary_p, minutes.summary or _DASH)
+    for extra in paras[1:]:  # drop the template's sample summary paragraphs
         extra._p.getparent().remove(extra._p)
-    # Re-add each discussion point as its own paragraph, cloning the summary
-    # paragraph's properties so RTL/font/size carry over.
-    anchor = first._p
+    anchor = summary_p._p
     for point in minutes.points:
-        clone = copy.deepcopy(first._p)
+        clone = copy.deepcopy(bullet_template)
         anchor.addnext(clone)
         anchor = clone
-        _set_paragraph_text(Paragraph(clone, body), f"- {point}")
+        _set_paragraph_text(Paragraph(clone, body), point)
 
 
 def autofill_docx(minutes_md: str, template_path: str | Path) -> bytes:
