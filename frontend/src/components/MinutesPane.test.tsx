@@ -48,6 +48,7 @@ describe("MinutesPane", () => {
     expect(screen.getByRole("heading", { name: "قائمة الحضور" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "نقاط نقاش الاجتماع" })).toBeInTheDocument()
     expect(screen.getByRole("heading", { name: "نتائج الاجتماع" })).toBeInTheDocument()
+    expect(screen.getByText("شكرًا لكم")).toBeInTheDocument()
   })
 
   it("exposes edit, copy, .md, and PDF actions in the result state", () => {

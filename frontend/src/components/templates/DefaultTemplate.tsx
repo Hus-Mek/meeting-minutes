@@ -118,7 +118,12 @@ export function DefaultTemplate({ minutes: m, editable = false, onChange }: Temp
                 </>
               ) : (
                 <>
-                  {m.summary && <p>{m.summary}</p>}
+                  {m.summary
+                    .split(/\n+/)
+                    .filter((para) => para.trim())
+                    .map((para, i) => (
+                      <p key={i}>{para}</p>
+                    ))}
                   <ul>
                     {m.points.filter((p) => p.trim()).map((p, i) => (
                       <li key={i}>{p}</li>
@@ -150,6 +155,8 @@ export function DefaultTemplate({ minutes: m, editable = false, onChange }: Temp
           ))}
         </tbody>
       </table>
+
+      <p className="mm-footer">شكرًا لكم</p>
     </div>
   )
 }

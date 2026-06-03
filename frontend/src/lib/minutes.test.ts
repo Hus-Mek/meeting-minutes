@@ -89,6 +89,29 @@ describe("parseMinutes", () => {
     expect(parseMinutes("# محضر اجتماع — اجتماع (تقني) (2026-03-31)").title).toBe("اجتماع (تقني)")
     expect(parseMinutes("# محضر اجتماع — اجتماع المتابعة (تقني)").title).toBe("اجتماع المتابعة (تقني)")
   })
+
+  it("preserves the break between multiple summary paragraphs", () => {
+    const md = `## نقاط نقاش الاجتماع
+**ملخص الاجتماع**
+الفقرة الأولى.
+
+الفقرة الثانية.
+
+- نقطة`
+    const m = parseMinutes(md)
+    expect(m.summary).toBe("الفقرة الأولى.\nالفقرة الثانية.")
+    expect(m.points).toEqual(["نقطة"])
+  })
+
+  it("ignores the شكرًا لكم footer line", () => {
+    const md = `## نتائج الاجتماع
+| المهام/ التوصيات | المسؤول | التاريخ المستهدف |
+| --- | --- | --- |
+| مهمة | مشاري | — |
+
+شكرًا لكم`
+    expect(parseMinutes(md).outcomes).toEqual([{ task: "مهمة", person: "مشاري", date: "" }])
+  })
 })
 
 describe("ownerOrg", () => {
@@ -152,6 +175,21 @@ describe("toMarkdown", () => {
     const md = toMarkdown(m)
     expect(md).toContain("a \\| b")
     expect(parseMinutes(md).outcomes[0].task).toBe("a | b")
+  })
+
+  it("writes multiple summary paragraphs with a blank line between them", () => {
+    const m = parseMinutes(`## نقاط نقاش الاجتماع
+**ملخص الاجتماع**
+أولى.
+
+ثانية.`)
+    const md = toMarkdown(m)
+    expect(md).toContain("أولى.\n\nثانية.")
+    expect(parseMinutes(md).summary).toBe("أولى.\nثانية.")
+  })
+
+  it("ends with the شكرًا لكم footer", () => {
+    expect(toMarkdown(parseMinutes(SAMPLE)).trimEnd().endsWith("شكرًا لكم")).toBe(true)
   })
 
   it("round-trips the meta, attendees, and discussion through markdown", () => {

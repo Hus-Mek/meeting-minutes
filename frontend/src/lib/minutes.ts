@@ -169,7 +169,7 @@ export function parseMinutes(md: string): Minutes {
     time,
     location,
     attendees,
-    summary: summaryParts.join(" "),
+    summary: summaryParts.join("\n"), // one entry per paragraph; preserved across serialize
     points,
     outcomes,
   }
@@ -196,7 +196,11 @@ export function toMarkdown(m: Minutes): string {
     "",
     "## نقاط نقاش الاجتماع",
     "**ملخص الاجتماع**",
-    m.summary,
+    m.summary
+      .split(/\n+/)
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .join("\n\n"), // blank line between paragraphs (round-trips back to "\n"-joined)
     "",
     ...m.points.filter((p) => p.trim()).map((p) => `- ${p}`),
     "",
@@ -204,6 +208,8 @@ export function toMarkdown(m: Minutes): string {
     "| المهام/ التوصيات | المسؤول | التاريخ المستهدف |",
     "| --- | --- | --- |",
     ...m.outcomes.map((o) => `| ${cell(o.task)} | ${cell(ownerOrg(m, o.person))} | ${cell(o.date)} |`),
+    "",
+    "شكرًا لكم",
   ]
   return lines.join("\n")
 }

@@ -251,6 +251,13 @@
 .tmpl-default .mm-owner {
     font-weight: 500;
 }
+.tmpl-default .mm-footer {
+    margin: 2rem 0 0.5rem;
+    text-align: center;
+    font-family: "Amiri", var(--font-heading);
+    font-size: 1.05rem;
+    color: var(--foreground);
+}
 .mm-edit {
     width: 100%;
     background: transparent;

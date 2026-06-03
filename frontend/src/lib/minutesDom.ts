@@ -43,6 +43,7 @@ thead th { background: #f3e4dc; font-weight: 600; }
 .mm-title { font-family: 'Amiri',serif; font-weight: 700; font-size: 16pt; background: #f3e4dc; }
 .mm-num { width: 22pt; text-align: center; color: #6b6b63; }
 .mm-owner { font-weight: 600; }
+.mm-footer { margin: 20pt 0 0; text-align: center; font-family: 'Amiri',serif; font-size: 13pt; }
 `
 
 /** Wrap rendered template HTML in a standalone document for PDF/HTML export. */
