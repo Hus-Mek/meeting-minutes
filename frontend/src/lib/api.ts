@@ -122,3 +122,10 @@ export async function exportMinutesDocx(
   }
   return res.blob()
 }
+
+/** Open an interactive Claude Code login window on the local machine (used by the
+ *  setup guide's "Log in to Claude" button). */
+export async function claudeLogin(): Promise<void> {
+  const res = await fetch("/api/claude/login", { method: "POST" })
+  await unwrap<{ status: string }>(res)
+}

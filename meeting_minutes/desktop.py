@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import os
 import socket
-import subprocess
 import sys
 import tempfile
 import threading
@@ -135,17 +134,12 @@ def _ensure_claude_runtime() -> None:
 
 
 def _launch_claude_login() -> None:
-    """Open an interactive Claude Code session so the user can complete the one-time
-    browser login. Uses the resolved CLI (CLAUDE_CODE_BIN, e.g. the bundled one)
-    when set, else a ``claude`` on PATH."""
-    claude = os.environ.get("CLAUDE_CODE_BIN") or "claude"
+    """Open an interactive Claude Code session for the one-time browser login
+    (delegates to the shared helper so the tray and the in-app button behave alike)."""
     try:
-        if sys.platform == "win32":
-            # 'start "title" "program"' opens a visible console running claude
-            # interactively; it walks the user through logging in via the browser.
-            subprocess.Popen(f'start "Claude Code login" "{claude}"', shell=True)
-        else:
-            subprocess.Popen([claude])
+        from meeting_minutes.llm import launch_claude_login
+
+        launch_claude_login()
     except Exception as exc:  # never crash the tray over a login attempt
         _fatal(f"Couldn't open the Claude login window.\n\n{exc}")
 

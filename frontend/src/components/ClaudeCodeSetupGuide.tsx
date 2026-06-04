@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from "react"
-import { Check, Copy, ExternalLink, Sparkles } from "lucide-react"
+import { Check, Copy, ExternalLink, Loader2, LogIn, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 
+import { claudeLogin } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -28,6 +29,22 @@ export function ClaudeCodeSetupGuide({
   onOpenChange,
   onUseCowork,
 }: ClaudeCodeSetupGuideProps) {
+  const [loggingIn, setLoggingIn] = useState(false)
+
+  async function handleLogin() {
+    setLoggingIn(true)
+    try {
+      await claudeLogin()
+      toast.success(
+        "Opening the Claude login window — sign in there, then come back and click Generate.",
+      )
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Couldn't start the Claude login")
+    } finally {
+      setLoggingIn(false)
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
@@ -35,12 +52,20 @@ export function ClaudeCodeSetupGuide({
           <DialogTitle>Set up Claude Code</DialogTitle>
           <DialogDescription>
             Claude Code needs to be ready on this PC. If you installed the app bundle,
-            it&apos;s already here — just log in: open the Meeting Minutes icon in your
-            system tray (bottom-right of the taskbar) and choose &quot;Log in to
-            Claude&quot;. Otherwise follow the steps below, or use Cowork now — no setup
-            needed.
+            it&apos;s already here — just log in below. Otherwise follow the steps to
+            install it, or use Cowork now — no setup needed.
           </DialogDescription>
         </DialogHeader>
+
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/40 p-3 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm text-foreground">
+            Already installed? Just sign in with your Claude account.
+          </p>
+          <Button onClick={handleLogin} disabled={loggingIn} className="shrink-0 gap-1.5">
+            {loggingIn ? <Loader2 className="animate-spin" /> : <LogIn />}
+            Log in to Claude
+          </Button>
+        </div>
 
         <ol className="flex flex-col gap-5">
           <Step

@@ -301,6 +301,24 @@ async def readai_fetch(
         raise HTTPException(status_code=502, detail=str(exc))
 
 
+@app.post("/api/claude/login")
+async def claude_login() -> dict[str, str]:
+    """Open an interactive Claude Code session for the one-time browser login.
+
+    Backs the setup guide's "Log in to Claude" button. The app runs locally, so this
+    spawns a console/window on the user's own machine via the shared launcher.
+    """
+    from .llm import launch_claude_login
+
+    try:
+        await run_in_threadpool(launch_claude_login)
+    except RuntimeError as exc:  # no claude found to log in to
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # spawning the login window failed
+        raise HTTPException(status_code=500, detail=f"Couldn't start the Claude login: {exc}")
+    return {"status": "started"}
+
+
 # Serve the built SPA last so /api/* takes precedence. Graceful message if unbuilt.
 if _DIST.is_dir():
     app.mount("/", StaticFiles(directory=str(_DIST), html=True), name="spa")

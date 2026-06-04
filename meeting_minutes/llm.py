@@ -554,6 +554,30 @@ class ClaudeCodeClient:
         return out
 
 
+def launch_claude_login(binary: str | None = None) -> None:
+    """Open an interactive Claude Code session so the user can complete the one-time
+    browser login.
+
+    Resolves the CLI the same way ``ClaudeCodeClient`` does (explicit arg, then
+    ``CLAUDE_CODE_BIN``, then PATH / known install locations — including the bundled
+    copy the desktop launcher wires up). Shared by the tray "Log in to Claude" item
+    and the in-app button so both behave identically. Raises ``RuntimeError`` when no
+    ``claude`` can be found.
+    """
+    import subprocess
+    import sys
+
+    claude = binary or os.environ.get("CLAUDE_CODE_BIN") or ClaudeCodeClient._resolve_binary(None)
+    if not claude:
+        raise RuntimeError("Claude Code was not found, so there is nothing to log in to.")
+    if sys.platform == "win32":
+        # 'start "title" "program"' opens a visible console running claude
+        # interactively; it walks the user through logging in via the browser.
+        subprocess.Popen(f'start "Claude Code login" "{claude}"', shell=True)  # noqa: S602
+    else:
+        subprocess.Popen([claude])  # noqa: S603
+
+
 # Backend registry: name -> factory(). "ollama" and "lmstudio" are the same
 # OpenAI-compatible client with different default ports; either is overridable via
 # LOCAL_LLM_BASE_URL. "claude-code" shells out to the local Claude Code CLI.
