@@ -12,7 +12,7 @@
 ; Build with:  ISCC.exe packaging\installer.iss   (run from the repo root)
 
 #define AppName "Meeting Minutes"
-#define AppVersion "1.0.1"
+#define AppVersion "1.0.2"
 #define AppPublisher "Hawaz"
 #define AppExe "MeetingMinutes.exe"
 

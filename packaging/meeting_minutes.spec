@@ -66,6 +66,16 @@ datas = [
 datas += collect_data_files("docx")
 datas += collect_data_files("docxtpl")
 
+# Bundle a portable Node.js + the Claude Code CLI when present. CI vendors these
+# into vendor/node BEFORE the build (download Node, then
+# `npm i -g @anthropic-ai/claude-code --prefix vendor/node`), so the frozen app
+# ships everything it needs except a one-time Claude login. The launcher prefers a
+# claude the user already has and only falls back to this. Guarded so dev/local
+# builds without the vendor dir still work.
+_vendor_node = os.path.join(ROOT, "vendor", "node")
+if os.path.isdir(_vendor_node):
+    datas.append((_vendor_node, "vendor/node"))
+
 # --- Hidden imports ---------------------------------------------------------
 # uvicorn and pystray load their concrete implementations dynamically (by
 # string), so PyInstaller's static analysis misses them — collect every

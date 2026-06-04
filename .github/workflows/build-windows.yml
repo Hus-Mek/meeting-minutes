@@ -59,6 +59,27 @@ jobs:
       - name: Generate app icon
         run: python packaging/make_icon.py
 
+      # 6b. Vendor a portable Node.js + the Claude Code CLI into vendor/node so the
+      #     installer ships everything the app needs except a one-time Claude login.
+      #     (The launcher prefers a claude the user already has and falls back to this.)
+      - name: Vendor Node.js + Claude Code CLI
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $ver = "v20.18.1"
+          $url = "https://nodejs.org/dist/$ver/node-$ver-win-x64.zip"
+          Write-Host "Downloading $url"
+          Invoke-WebRequest -Uri $url -OutFile node.zip
+          Expand-Archive node.zip -DestinationPath node_tmp -Force
+          if (Test-Path vendor/node) { Remove-Item -Recurse -Force vendor/node }
+          New-Item -ItemType Directory -Force -Path vendor | Out-Null
+          Move-Item "node_tmp/node-$ver-win-x64" vendor/node
+          $prefix = (Resolve-Path vendor/node).Path
+          & "vendor/node/npm.cmd" install -g "@anthropic-ai/claude-code" --prefix "$prefix"
+          if (-not (Test-Path vendor/node/claude.cmd)) { throw "claude.cmd missing after npm install" }
+          Write-Host "Vendored Node + Claude Code CLI OK:"
+          Get-ChildItem vendor/node/claude.cmd
+
       # 7. Freeze the app into dist/MeetingMinutes/ (ONEDIR: MeetingMinutes.exe + _internal/).
       - name: Freeze with PyInstaller
         run: pyinstaller --noconfirm --clean packaging/meeting_minutes.spec

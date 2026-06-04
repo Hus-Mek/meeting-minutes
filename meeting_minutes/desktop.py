@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -97,6 +98,58 @@ def _fatal(message: str) -> None:
     print(f"{APP_NAME}: {message}", file=sys.stderr)
 
 
+def _ensure_claude_runtime() -> None:
+    """Make a Claude Code CLI available, preferring one the user already has.
+
+    Order:
+      1. If a ``claude`` is already resolvable (on PATH, or in a known install
+         location such as one the Claude desktop app / npm may provide), use it —
+         do not touch the environment.
+      2. Otherwise fall back to the portable Node.js + CLI we bundle in the
+         installer (``vendor/node``): prepend its dir to PATH so the ``claude.cmd``
+         shim finds node, and point CLAUDE_CODE_BIN at it.
+
+    This means: installing the Claude GUI's CLI later is automatically used, and a
+    fresh PC with neither still works off the bundled copy. No-op in dev when
+    nothing is bundled and no claude is installed.
+    """
+    try:
+        from meeting_minutes.llm import ClaudeCodeClient
+
+        if ClaudeCodeClient._resolve_binary(None):
+            return  # a real claude already exists — leave it alone
+    except Exception:
+        pass  # fall through to the bundled runtime
+
+    base = getattr(sys, "_MEIPASS", None) or os.path.dirname(
+        os.path.dirname(os.path.abspath(__file__))
+    )
+    node_dir = os.path.join(base, "vendor", "node")
+    if not os.path.isdir(node_dir):
+        return  # nothing bundled (dev build) — leave resolution to the CLI
+    # Bundled node.exe first on PATH so the claude.cmd shim resolves it.
+    os.environ["PATH"] = node_dir + os.pathsep + os.environ.get("PATH", "")
+    claude_cmd = os.path.join(node_dir, "claude.cmd")
+    if os.path.isfile(claude_cmd):
+        os.environ.setdefault("CLAUDE_CODE_BIN", claude_cmd)
+
+
+def _launch_claude_login() -> None:
+    """Open an interactive Claude Code session so the user can complete the one-time
+    browser login. Uses the resolved CLI (CLAUDE_CODE_BIN, e.g. the bundled one)
+    when set, else a ``claude`` on PATH."""
+    claude = os.environ.get("CLAUDE_CODE_BIN") or "claude"
+    try:
+        if sys.platform == "win32":
+            # 'start "title" "program"' opens a visible console running claude
+            # interactively; it walks the user through logging in via the browser.
+            subprocess.Popen(f'start "Claude Code login" "{claude}"', shell=True)
+        else:
+            subprocess.Popen([claude])
+    except Exception as exc:  # never crash the tray over a login attempt
+        _fatal(f"Couldn't open the Claude login window.\n\n{exc}")
+
+
 def build_server(port: int, host: str = HOST):
     """Construct a uvicorn server for the app that is safe to ``.run()`` in a thread.
 
@@ -147,8 +200,12 @@ def _run_tray(server, url: str) -> None:
         server.should_exit = True
         icon.stop()
 
+    def on_login(_icon, _item) -> None:
+        _launch_claude_login()
+
     menu = pystray.Menu(
         pystray.MenuItem(f"Open {APP_NAME}", on_open, default=True),
+        pystray.MenuItem("Log in to Claude", on_login),
         pystray.MenuItem("Quit", on_quit),
     )
     icon = pystray.Icon(APP_NAME, _tray_image(), APP_NAME, menu)
@@ -166,6 +223,7 @@ def _wait_until_exit(server) -> None:
 
 def main() -> int:
     _ensure_streams()
+    _ensure_claude_runtime()
     try:
         port = find_free_port()
         url = app_url(port)

@@ -12,7 +12,7 @@ import { MinutesPane, type PaneState } from "@/components/MinutesPane"
 import { DEFAULT_TEMPLATE_ID } from "@/components/templates/registry"
 import { Button } from "@/components/ui/button"
 import { ClaudeCodeSetupGuide } from "@/components/ClaudeCodeSetupGuide"
-import { isClaudeCodeMissing } from "@/lib/claudeCode"
+import { isClaudeCodeMissing, isClaudeCodeAuthNeeded } from "@/lib/claudeCode"
 
 function today(): string {
   return new Date().toISOString().slice(0, 10)
@@ -110,9 +110,10 @@ export default function App() {
       setPaneState("result")
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Generation failed"
-      // If Claude Code isn't installed, open the illustrated setup guide instead of
-      // a terse toast — it walks the user through install + login, or using Cowork.
-      if (isClaudeCodeMissing(message)) {
+      // If Claude Code isn't installed OR just needs a login, open the illustrated
+      // setup guide instead of a terse toast — it covers install, the one-time login,
+      // and the no-setup Cowork fallback.
+      if (isClaudeCodeMissing(message) || isClaudeCodeAuthNeeded(message)) {
         setSetupGuideOpen(true)
       } else {
         toast.error(message)

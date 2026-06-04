@@ -109,6 +109,28 @@ Write-Host "==> Generating app icon..." -ForegroundColor Cyan
 python packaging\make_icon.py
 
 # -----------------------------------------------------------------------------
+# Step 5b: Vendor a portable Node.js + the Claude Code CLI into vendor\node so the
+#          installer ships everything the app needs except a one-time Claude login.
+#          (The launcher prefers a claude the user already has and falls back to this.)
+# -----------------------------------------------------------------------------
+Write-Host "==> Vendoring Node.js + Claude Code CLI..." -ForegroundColor Cyan
+$nodeVer = "v20.18.1"
+$nodeUrl = "https://nodejs.org/dist/$nodeVer/node-$nodeVer-win-x64.zip"
+$nodeZip = Join-Path $repoRoot "node.zip"
+$nodeTmp = Join-Path $repoRoot "node_tmp"
+$vendorNode = Join-Path $repoRoot "vendor\node"
+Invoke-WebRequest -Uri $nodeUrl -OutFile $nodeZip
+if (Test-Path $nodeTmp) { Remove-Item -Recurse -Force $nodeTmp }
+Expand-Archive $nodeZip -DestinationPath $nodeTmp -Force
+if (Test-Path $vendorNode) { Remove-Item -Recurse -Force $vendorNode }
+New-Item -ItemType Directory -Force -Path (Join-Path $repoRoot "vendor") | Out-Null
+Move-Item (Join-Path $nodeTmp "node-$nodeVer-win-x64") $vendorNode
+& (Join-Path $vendorNode "npm.cmd") install -g "@anthropic-ai/claude-code" --prefix $vendorNode
+if (-not (Test-Path (Join-Path $vendorNode "claude.cmd"))) { Write-Error "claude.cmd missing after npm install" }
+Remove-Item -Force $nodeZip
+Remove-Item -Recurse -Force $nodeTmp
+
+# -----------------------------------------------------------------------------
 # Step 6: Freeze the app with PyInstaller (ONEDIR -> dist\MeetingMinutes\).
 # -----------------------------------------------------------------------------
 Write-Host "==> Freezing the app with PyInstaller..." -ForegroundColor Cyan

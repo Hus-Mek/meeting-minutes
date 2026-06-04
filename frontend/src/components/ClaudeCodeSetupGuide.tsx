@@ -34,8 +34,11 @@ export function ClaudeCodeSetupGuide({
         <DialogHeader>
           <DialogTitle>Set up Claude Code</DialogTitle>
           <DialogDescription>
-            We couldn&apos;t find Claude Code on this PC. Follow the 4 quick steps
-            below to install it, or use Cowork right now — no setup needed.
+            Claude Code needs to be ready on this PC. If you installed the app bundle,
+            it&apos;s already here — just log in: open the Meeting Minutes icon in your
+            system tray (bottom-right of the taskbar) and choose &quot;Log in to
+            Claude&quot;. Otherwise follow the steps below, or use Cowork now — no setup
+            needed.
           </DialogDescription>
         </DialogHeader>
 

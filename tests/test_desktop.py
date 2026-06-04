@@ -8,7 +8,9 @@ FastAPI app in a daemon thread and probes it over loopback — no network, no LL
 from __future__ import annotations
 
 import json
+import os
 import socket
+import sys
 import threading
 import time
 import urllib.request
@@ -105,3 +107,52 @@ class TestRealServerBoot:
             # Cleanup — ask the server to stop and let the thread wind down.
             server.should_exit = True
             thread.join(timeout=10)
+
+
+class TestEnsureClaudeRuntime:
+    """The launcher must PREFER a claude the user already has and only fall back to
+    the bundled Node + CLI when none is found."""
+
+    def test_prefers_an_existing_claude_and_leaves_env_untouched(self, monkeypatch):
+        # Arrange — a claude is already resolvable; nothing should be bundled-wired.
+        from meeting_minutes import desktop
+        from meeting_minutes.llm import ClaudeCodeClient
+
+        monkeypatch.delenv("CLAUDE_CODE_BIN", raising=False)
+        monkeypatch.setattr(
+            ClaudeCodeClient,
+            "_resolve_binary",
+            classmethod(lambda cls, binary=None: "/usr/bin/claude"),
+        )
+
+        # Act
+        desktop._ensure_claude_runtime()
+
+        # Assert — no bundled override applied.
+        assert "CLAUDE_CODE_BIN" not in os.environ
+
+    def test_falls_back_to_bundled_when_none_found(self, monkeypatch, tmp_path):
+        # Arrange — no claude resolvable; a bundled vendor/node/claude.cmd exists.
+        from meeting_minutes import desktop
+        from meeting_minutes.llm import ClaudeCodeClient
+
+        node_dir = tmp_path / "vendor" / "node"
+        node_dir.mkdir(parents=True)
+        claude_cmd = node_dir / "claude.cmd"
+        claude_cmd.write_text("@echo off\n", encoding="utf-8")
+
+        monkeypatch.delenv("CLAUDE_CODE_BIN", raising=False)
+        monkeypatch.setenv("PATH", os.environ.get("PATH", ""))  # let monkeypatch restore PATH
+        monkeypatch.setattr(
+            ClaudeCodeClient,
+            "_resolve_binary",
+            classmethod(lambda cls, binary=None: None),
+        )
+        monkeypatch.setattr(sys, "_MEIPASS", str(tmp_path), raising=False)
+
+        # Act
+        desktop._ensure_claude_runtime()
+
+        # Assert — CLAUDE_CODE_BIN points at the bundled shim and node dir leads PATH.
+        assert os.environ.get("CLAUDE_CODE_BIN") == str(claude_cmd)
+        assert os.environ.get("PATH", "").split(os.pathsep)[0] == str(node_dir)

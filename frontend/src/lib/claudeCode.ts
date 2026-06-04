@@ -24,3 +24,31 @@ export function isClaudeCodeMissing(message: string): boolean {
 
   return text.includes("claude code") && text.includes("not found")
 }
+
+/**
+ * Detects whether a generation error means Claude Code is present but not yet
+ * authenticated (the user hasn't logged in). This is the common case once the app
+ * bundles the CLI: it resolves fine but `claude` reports it needs a login. The UI
+ * uses this to open the guide and point at the one-time login (the Meeting Minutes
+ * tray icon → "Log in to Claude") rather than the install steps.
+ *
+ * @param message - The error text surfaced from a failed generation.
+ * @returns `true` when the message indicates a login/authentication is required.
+ */
+export function isClaudeCodeAuthNeeded(message: string): boolean {
+  if (!message) {
+    return false
+  }
+
+  const text = message.toLowerCase()
+
+  return (
+    text.includes("not logged in") ||
+    text.includes("logged out") ||
+    text.includes("/login") ||
+    text.includes("log in to claude") ||
+    text.includes("unauthorized") ||
+    text.includes("authenticate") ||
+    text.includes("invalid api key")
+  )
+}

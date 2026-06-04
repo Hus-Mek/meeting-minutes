@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { isClaudeCodeMissing } from "./claudeCode"
+import { isClaudeCodeMissing, isClaudeCodeAuthNeeded } from "./claudeCode"
 
 const BACKEND_NOT_FOUND_MESSAGE =
   "Claude Code was not found on this computer.\n" +
@@ -60,5 +60,28 @@ describe("isClaudeCodeMissing", () => {
 
     // Assert
     expect(result).toBe(false)
+  })
+})
+
+describe("isClaudeCodeAuthNeeded", () => {
+  it("returns true for a 'not logged in' CLI failure", () => {
+    const message = "Claude Code CLI failed (exit 1): Not logged in. Run /login to continue."
+    expect(isClaudeCodeAuthNeeded(message)).toBe(true)
+  })
+
+  it("returns true for an unauthorized / invalid key message", () => {
+    expect(isClaudeCodeAuthNeeded("Error: Unauthorized — invalid API key")).toBe(true)
+  })
+
+  it("returns false for a generic generation failure", () => {
+    expect(isClaudeCodeAuthNeeded("Generation failed")).toBe(false)
+  })
+
+  it("returns false for an empty string", () => {
+    expect(isClaudeCodeAuthNeeded("")).toBe(false)
+  })
+
+  it("returns false for the 'not found' install message", () => {
+    expect(isClaudeCodeAuthNeeded(BACKEND_NOT_FOUND_MESSAGE)).toBe(false)
   })
 })

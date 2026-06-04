@@ -27,9 +27,12 @@ The end-user flow:
 5. To stop it, right-click the tray icon and choose **Quit** (this is the only
    way to fully stop the server — see [Limitations](#6-limitations)).
 
-There is **no API key** to enter and **no configuration** to ship. The app
-talks to the local **Claude Code CLI / Cowork** backend already on the machine,
-so nothing metered or secret is bundled or requested.
+There is **no API key** to enter and **no configuration** to ship. The installer
+**bundles Node.js + the Claude Code CLI**, and the launcher prefers a `claude` the
+machine already has (e.g. from the Claude desktop app or an npm install), falling
+back to the bundled copy. The only one-time step left for the user is to **log in
+to Claude** (tray icon → *Log in to Claude*) using their own subscription —
+nothing metered or secret is bundled. **Cowork** remains a zero-setup fallback.
 
 ---
 
@@ -63,23 +66,33 @@ Three layers turn the web app into a desktop app:
    into the single per-user `MeetingMinutes-Setup.exe`, with Start Menu and
    optional Desktop shortcuts and an uninstaller.
 
+4. **Bundled runtime — portable Node.js + Claude Code CLI.**
+   CI (and `build_windows.ps1`) download a portable Node.js and run
+   `npm i -g @anthropic-ai/claude-code --prefix vendor/node`, which the spec
+   bundles into the app. At startup `desktop._ensure_claude_runtime()` **prefers a
+   `claude` the user already has** (PATH / known install locations) and only falls
+   back to the bundled copy, wiring `CLAUDE_CODE_BIN` + `PATH` so the `claude.cmd`
+   shim finds `node`. The tray menu's **Log in to Claude** opens an interactive
+   `claude` for the one-time browser login.
+
 ---
 
 ## 3. Files involved
 
 | File | Role |
 |---|---|
-| `meeting_minutes/desktop.py` | The launcher (EXE entry point): free port → uvicorn on 127.0.0.1 → wait for `/api/health` → open browser → system-tray Quit. Pure helpers are import-safe and unit-testable on headless Linux/CI. |
+| `meeting_minutes/desktop.py` | The launcher (EXE entry point): free port → uvicorn on 127.0.0.1 → wait for `/api/health` → open browser → system-tray (Open / **Log in to Claude** / Quit). `_ensure_claude_runtime()` prefers an existing `claude`, else wires the bundled `vendor/node`. Pure helpers are import-safe and unit-testable on headless Linux/CI. |
 | `requirements-desktop.txt` | Desktop runtime deps layered on the server deps: `-r requirements.txt` plus `pystray` (tray icon + Quit) and `Pillow` (generates the in-memory tray image). PyInstaller is **not** here — it's a build-only tool installed by CI / the build script. |
 | `packaging/make_icon.py` | Generates `packaging/app.ico` (brand teal `#00ABAF` badge + document glyph) entirely in code with Pillow — no committed binary icon. Consumed by both the spec (embedded in the EXE) and the installer (`SetupIconFile`). |
-| `packaging/meeting_minutes.spec` | PyInstaller ONEDIR spec → `dist/MeetingMinutes/` (`MeetingMinutes.exe` + `_internal/`). Bundles `frontend/dist` → `frontend/dist` (bundle root, so `web.py`'s `parent.parent/frontend/dist` resolves) and the prebuilt `sample_arabic_minutes.docx` → `meeting_minutes/templates`. UPX disabled (trips AV); `console=False`. |
+| `packaging/meeting_minutes.spec` | PyInstaller ONEDIR spec → `dist/MeetingMinutes/` (`MeetingMinutes.exe` + `_internal/`). Bundles `frontend/dist` → `frontend/dist` (bundle root, so `web.py`'s `parent.parent/frontend/dist` resolves), the prebuilt `sample_arabic_minutes.docx` → `meeting_minutes/templates`, and (when present) `vendor/node` → `vendor/node` (portable Node.js + the Claude Code CLI). UPX disabled (trips AV); `console=False`. |
 | `packaging/installer.iss` | Inno Setup 6 script. Per-user install (`PrivilegesRequired=lowest`, no admin/UAC), x64, Start Menu + optional Desktop shortcuts, fixed `AppId` GUID for clean upgrades. Outputs `../dist/installer/MeetingMinutes-Setup.exe`. |
 | `packaging/build_windows.ps1` | One-shot **local** Windows build: frontend → isolated `.buildvenv` → install deps + PyInstaller → prebuild `.docx` template → `make_icon.py` → PyInstaller freeze → ISCC. Resolves the repo root itself, so cwd doesn't matter. |
 | `.github/workflows/build-windows.yml` | **CI** build on `windows-latest`: same steps as the local script; installs Inno Setup via Chocolatey and invokes ISCC at `C:\Program Files (x86)\Inno Setup 6\ISCC.exe`. Uploads the installer as an artifact (and attaches it to a GitHub Release on tag pushes). |
 
 Build-time artifacts (not committed): `packaging/app.ico`, `frontend/dist/`,
-`meeting_minutes/templates/sample_arabic_minutes.docx`, `.buildvenv/`,
-`dist/MeetingMinutes/`, and `dist/installer/MeetingMinutes-Setup.exe`.
+`meeting_minutes/templates/sample_arabic_minutes.docx`, `vendor/` (portable
+Node.js + the Claude Code CLI), `.buildvenv/`, `dist/MeetingMinutes/`, and
+`dist/installer/MeetingMinutes-Setup.exe`.
 
 ---
 
@@ -163,9 +176,12 @@ exactly as it does in development.
 > 2. Open it from the **Start Menu** (or the Desktop shortcut). Your browser
 >    will open the app automatically, and a small teal icon appears near the
 >    clock (the **system tray**).
-> 3. When you're done, right-click that tray icon and choose **Quit**. Just
+> 3. **The first time only:** right-click the tray icon and choose **Log in to
+>    Claude**, then sign in with your Claude account in the window that opens.
+>    (Or choose **Cowork** in the app to skip this entirely.)
+> 4. When you're done, right-click that tray icon and choose **Quit**. Just
 >    closing the browser tab does **not** close the app.
 >
-> No account, API key, or setup is required. If you also want to export minutes
-> as **PDF**, ask your IT/admin to install **LibreOffice** — Word export works
-> without it.
+> No API key or manual install is required — Node.js and the Claude Code CLI come
+> bundled. If you also want to export minutes as **PDF**, ask your IT/admin to
+> install **LibreOffice** — Word export works without it.
