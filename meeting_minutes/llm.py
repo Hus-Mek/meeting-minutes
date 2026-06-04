@@ -475,9 +475,18 @@ class ClaudeCodeClient:
     def __init__(self, *, binary: str | None = None, timeout: float = 600.0) -> None:
         self._path = self._resolve_binary(binary)
         if not self._path:
+            # Plain-language guidance for non-technical users: the GUI detects this
+            # error and shows an illustrated setup guide, but keep the full steps here
+            # too as a fallback (and for CLI users). Lead with the no-setup option.
+            # Must keep the words "not found" — tests match on that substring.
             raise RuntimeError(
-                "Claude Code CLI not found. Install it (`npm i -g @anthropic-ai/claude-code`) "
-                "and log in, or set CLAUDE_CODE_BIN to its full path."
+                "Claude Code was not found on this computer.\n"
+                "Quick option — no setup: in the 'Model backend' menu, switch to 'Cowork' to "
+                "copy the prompt into Claude yourself.\n"
+                "To use Claude Code automatically: (1) install Node.js from https://nodejs.org "
+                "(2) open Command Prompt and run:  npm install -g @anthropic-ai/claude-code  "
+                "(3) run:  claude  and log in with your Claude account  (4) reopen Meeting Minutes.\n"
+                "(Advanced: set CLAUDE_CODE_BIN to the claude binary's path.)"
             )
         self._timeout = timeout
 
@@ -527,6 +536,10 @@ class ClaudeCodeClient:
                     text=True,
                     timeout=self._timeout,
                     cwd=workdir,
+                    # On Windows, suppress the console window that would otherwise flash
+                    # for each CLI call when launched from a windowed (no-console) app.
+                    # getattr keeps this 0/inert on POSIX where the flag does not exist.
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
                 )
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(

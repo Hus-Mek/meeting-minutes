@@ -63,7 +63,7 @@ class TestClaudeCodeClient:
         _patch_which(monkeypatch)
         captured = {}
 
-        def fake_run(cmd, input=None, capture_output=None, text=None, timeout=None, cwd=None):
+        def fake_run(cmd, input=None, capture_output=None, text=None, timeout=None, cwd=None, **kwargs):
             captured.update(cmd=cmd, input=input, timeout=timeout, cwd=cwd)
             return _Proc(stdout="## محضر اجتماع\nمحتوى")
 

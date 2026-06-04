@@ -30,6 +30,7 @@ interface InputsPaneProps {
   onTemplateIdChange: (id: string) => void
   uploadedTemplate: File | null
   onUploadedTemplateChange: (file: File | null) => void
+  onOpenSetupGuide?: () => void
 }
 
 const SECTION_LABEL = "text-xs font-semibold uppercase tracking-wide text-muted-foreground"
@@ -46,6 +47,7 @@ export function InputsPane({
   onTemplateIdChange,
   uploadedTemplate,
   onUploadedTemplateChange,
+  onOpenSetupGuide,
 }: InputsPaneProps) {
   return (
     <div className="flex flex-col gap-6">
@@ -189,19 +191,23 @@ export function InputsPane({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="claude-code">Claude Code (subscription · automatic, no API key)</SelectItem>
-                  <SelectItem value="handoff">Hand off — copy prompt to an agent (no call)</SelectItem>
-                  <SelectItem value="anthropic">Anthropic Claude (API key)</SelectItem>
-                  <SelectItem value="openrouter">OpenRouter — Sonnet 4.6</SelectItem>
-                  <SelectItem value="groq">Groq — Llama 3.3 70B (fast)</SelectItem>
-                  <SelectItem value="lmstudio">LM Studio — local (free)</SelectItem>
-                  <SelectItem value="ollama">Ollama — local (free)</SelectItem>
+                  <SelectItem value="handoff">Cowork — copy the prompt to the agent (no call)</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
                 Claude Code = automatic on your subscription via the local CLI (no API key; install
-                <code> @anthropic-ai/claude-code</code>). Hand off = returns the prompt to paste into
-                an agent. Anthropic/OpenRouter need API keys; local backends need a running server.
+                <code> @anthropic-ai/claude-code</code>). Cowork = returns the prompt to paste into
+                the agent. Both run on your Claude subscription — nothing else to configure.
               </p>
+              {options.backend === "claude-code" && onOpenSetupGuide && (
+                <button
+                  type="button"
+                  onClick={onOpenSetupGuide}
+                  className="w-fit text-left text-xs font-medium text-primary underline-offset-4 hover:underline"
+                >
+                  Claude Code not installed? Open the setup guide
+                </button>
+              )}
             </div>
             <p className="text-xs text-muted-foreground">JSON transcripts only — field mapping:</p>
             <div className="grid grid-cols-2 gap-3">

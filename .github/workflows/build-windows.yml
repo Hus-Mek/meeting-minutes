@@ -1,0 +1,88 @@
+# Builds the one-click Windows installer (MeetingMinutes-Setup.exe) on a
+# Windows runner. Runs manually (workflow_dispatch) or automatically when a
+# version tag (v*) is pushed; on a tag it also attaches the installer to the
+# matching GitHub Release.
+name: build-windows
+
+# Manual runs from the Actions tab, plus automatic runs on version tags.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+# Needed so the release step can create/update a Release and upload assets.
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      # 1. Get the source.
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # 2. Toolchains: Node (frontend build) and Python (backend + freeze).
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # 3. Build the React SPA -> frontend/dist (bundled by the PyInstaller spec).
+      - name: Build frontend
+        working-directory: frontend
+        run: |
+          npm ci
+          npm run build
+
+      # 4. Install Python runtime deps + the desktop extras + PyInstaller.
+      #    PyInstaller is a build-only tool, so it is installed here rather than
+      #    listed in requirements-desktop.txt.
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-desktop.txt pyinstaller
+
+      # 5. Pre-build the .docx template at packaging time so the frozen app
+      #    never has to write into read-only Program Files at runtime.
+      - name: Pre-build .docx template
+        run: python -c "from meeting_minutes.sample_template import build; print(build())"
+
+      # 6. Generate the app icon (packaging/app.ico) used by the EXE + installer.
+      - name: Generate app icon
+        run: python packaging/make_icon.py
+
+      # 7. Freeze the app into dist/MeetingMinutes/ (ONEDIR: MeetingMinutes.exe + _internal/).
+      - name: Freeze with PyInstaller
+        run: pyinstaller --noconfirm --clean packaging/meeting_minutes.spec
+
+      # 8. Install Inno Setup 6 (provides ISCC.exe) via Chocolatey.
+      - name: Install Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      # 9. Compile the installer -> dist/installer/MeetingMinutes-Setup.exe.
+      #    ISCC lives at a path with spaces, so invoke it with the PowerShell
+      #    call operator (&) and a quoted path.
+      - name: Build installer
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging/installer.iss'
+
+      # 10. Always upload the installer as a workflow artifact.
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MeetingMinutes-Setup
+          path: dist/installer/MeetingMinutes-Setup.exe
+
+      # 11. On tag pushes only, attach the installer to the GitHub Release.
+      - name: Attach installer to release
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/installer/MeetingMinutes-Setup.exe

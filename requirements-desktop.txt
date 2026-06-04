@@ -1,0 +1,11 @@
+# Desktop / frozen-app runtime dependencies.
+# This file layers the extra packages the system-tray desktop build needs
+# on top of the base server requirements. Build tools (e.g. pyinstaller)
+# are intentionally NOT listed here; they are installed by CI / the build
+# script, not shipped into the frozen app.
+
+# Base FastAPI/server runtime — everything the web app already needs.
+-r requirements.txt
+
+pystray>=0.19.5  # System-tray icon + "Quit" menu item that backs desktop.py's tray control.
+Pillow>=10.0.0   # Generates the in-memory tray icon image consumed by pystray.

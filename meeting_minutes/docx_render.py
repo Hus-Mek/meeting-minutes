@@ -99,6 +99,9 @@ def docx_to_pdf(docx_bytes: bytes) -> bytes:
                 capture_output=True,
                 timeout=SOFFICE_TIMEOUT_S,
                 check=False,
+                # Suppress the flashing console window on Windows when the frozen,
+                # windowed app shells out; inert (0) on POSIX via getattr.
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
             )
         except subprocess.TimeoutExpired:
             # TimeoutExpired is not a RuntimeError; re-raise as one so the web layer

@@ -10,3 +10,11 @@ htmlcov/
 
 # Generated .docx template (built on demand from meeting_minutes/sample_template.py)
 meeting_minutes/templates/
+
+# Generated app icon (built on demand from packaging/make_icon.py)
+packaging/app.ico
+
+# PyInstaller / Inno Setup build output
+dist/
+build/
+.buildvenv/

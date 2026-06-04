@@ -11,6 +11,8 @@ import { InputsPane } from "@/components/InputsPane"
 import { MinutesPane, type PaneState } from "@/components/MinutesPane"
 import { DEFAULT_TEMPLATE_ID } from "@/components/templates/registry"
 import { Button } from "@/components/ui/button"
+import { ClaudeCodeSetupGuide } from "@/components/ClaudeCodeSetupGuide"
+import { isClaudeCodeMissing } from "@/lib/claudeCode"
 
 function today(): string {
   return new Date().toISOString().slice(0, 10)
@@ -46,6 +48,7 @@ export default function App() {
   const [minutes, setMinutes] = useState("")
   const [templateId, setTemplateId] = useState(DEFAULT_TEMPLATE_ID)
   const [uploadedTemplate, setUploadedTemplate] = useState<File | null>(null)
+  const [setupGuideOpen, setSetupGuideOpen] = useState(false)
 
   const { speakerKey, startKey, endKey, textKey } = options
 
@@ -106,7 +109,14 @@ export default function App() {
       setMinutes(result.minutes)
       setPaneState("result")
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Generation failed")
+      const message = err instanceof Error ? err.message : "Generation failed"
+      // If Claude Code isn't installed, open the illustrated setup guide instead of
+      // a terse toast — it walks the user through install + login, or using Cowork.
+      if (isClaudeCodeMissing(message)) {
+        setSetupGuideOpen(true)
+      } else {
+        toast.error(message)
+      }
       setPaneState(minutes ? "result" : "input")
     }
   }
@@ -144,6 +154,7 @@ export default function App() {
             onTemplateIdChange={setTemplateId}
             uploadedTemplate={uploadedTemplate}
             onUploadedTemplateChange={setUploadedTemplate}
+            onOpenSetupGuide={() => setSetupGuideOpen(true)}
           />
         </section>
         <section className="min-h-0 overflow-hidden bg-paper">
@@ -156,6 +167,16 @@ export default function App() {
           />
         </section>
       </main>
+
+      <ClaudeCodeSetupGuide
+        open={setupGuideOpen}
+        onOpenChange={setSetupGuideOpen}
+        onUseCowork={() => {
+          onChange({ backend: "handoff" })
+          setSetupGuideOpen(false)
+          toast.success("Switched to Cowork — click Generate again")
+        }}
+      />
     </div>
   )
 }
