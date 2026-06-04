@@ -301,6 +301,16 @@ async def readai_fetch(
         raise HTTPException(status_code=502, detail=str(exc))
 
 
+@app.get("/api/claude/status")
+async def claude_status() -> dict[str, object]:
+    """Startup probe: whether a working Claude Code CLI is available, so the UI can
+    open the setup guide on load instead of waiting until the user hits Generate."""
+    from .llm import claude_code_available
+
+    available, path = await run_in_threadpool(claude_code_available)
+    return {"available": available, "path": path}
+
+
 @app.post("/api/claude/login")
 async def claude_login() -> dict[str, str]:
     """Open an interactive Claude Code session for the one-time browser login.

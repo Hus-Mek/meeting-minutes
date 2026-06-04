@@ -43,3 +43,35 @@ def test_login_endpoint_returns_400_when_no_claude(monkeypatch):
     # Assert
     assert resp.status_code == 400
     assert "not found" in resp.json()["error"].lower()
+
+
+def test_status_endpoint_reports_available(monkeypatch):
+    # Arrange — a working CLI resolves and runs.
+    monkeypatch.setattr(
+        "meeting_minutes.llm.claude_code_available",
+        lambda *args, **kwargs: (True, "/usr/bin/claude"),
+    )
+
+    # Act
+    with TestClient(app) as client:
+        resp = client.get("/api/claude/status")
+
+    # Assert
+    assert resp.status_code == 200
+    assert resp.json() == {"available": True, "path": "/usr/bin/claude"}
+
+
+def test_status_endpoint_reports_unavailable(monkeypatch):
+    # Arrange — no working CLI on this machine.
+    monkeypatch.setattr(
+        "meeting_minutes.llm.claude_code_available",
+        lambda *args, **kwargs: (False, None),
+    )
+
+    # Act
+    with TestClient(app) as client:
+        resp = client.get("/api/claude/status")
+
+    # Assert
+    assert resp.status_code == 200
+    assert resp.json() == {"available": False, "path": None}

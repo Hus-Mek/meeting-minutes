@@ -3,6 +3,7 @@ import { Loader2, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import {
   generateMinutes,
+  getClaudeStatus,
   inspectTranscript,
   type InspectResult,
   type MinutesOptions,
@@ -93,6 +94,22 @@ export default function App() {
       cancelled = true
     }
   }, [file, speakerKey, startKey, endKey, textKey])
+
+  // Startup check: if Claude Code isn't ready on this machine, proactively open the
+  // setup guide on load (rather than letting the user find out only at Generate time).
+  useEffect(() => {
+    let cancelled = false
+    getClaudeStatus()
+      .then((status) => {
+        if (!cancelled && !status.available) setSetupGuideOpen(true)
+      })
+      .catch(() => {
+        // Probe failed — stay quiet; the generate-time handling still covers it.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const onChange = useCallback((patch: Partial<MinutesOptions>) => {
     setOptions((prev) => ({ ...prev, ...patch }))

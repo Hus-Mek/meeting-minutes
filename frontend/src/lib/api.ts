@@ -129,3 +129,13 @@ export async function claudeLogin(): Promise<void> {
   const res = await fetch("/api/claude/login", { method: "POST" })
   await unwrap<{ status: string }>(res)
 }
+
+export interface ClaudeStatus {
+  available: boolean
+  path: string | null
+}
+
+/** Startup probe: whether a working Claude Code CLI is available on this machine. */
+export async function getClaudeStatus(): Promise<ClaudeStatus> {
+  return unwrap<ClaudeStatus>(await fetch("/api/claude/status"))
+}

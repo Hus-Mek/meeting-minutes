@@ -583,6 +583,34 @@ def launch_claude_login(binary: str | None = None) -> None:
         subprocess.Popen([claude])  # noqa: S603
 
 
+def claude_code_available(timeout: float = 10.0) -> tuple[bool, str | None]:
+    """Startup check: is a *working* Claude Code CLI present?
+
+    Resolves the binary (CLAUDE_CODE_BIN / PATH / known locations / the bundled copy)
+    and runs ``claude --version``. Returns ``(ok, path)`` where ``ok`` is True only if
+    the CLI both resolves AND runs. Does NOT check login — that surfaces at generate
+    time. UTF-8 + no-console-window flags match how generation invokes the CLI.
+    """
+    import subprocess
+
+    path = ClaudeCodeClient._resolve_binary(None)
+    if not path:
+        return (False, None)
+    try:
+        proc = subprocess.run(
+            [path, "--version"],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        return (proc.returncode == 0, path)
+    except Exception:
+        return (False, path)
+
+
 # Backend registry: name -> factory(). "ollama" and "lmstudio" are the same
 # OpenAI-compatible client with different default ports; either is overridable via
 # LOCAL_LLM_BASE_URL. "claude-code" shells out to the local Claude Code CLI.
