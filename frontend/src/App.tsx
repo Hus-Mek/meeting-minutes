@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react"
 import { Loader2, Sparkles } from "lucide-react"
 import { toast } from "sonner"
 import {
+  checkForUpdate,
   generateMinutes,
   getClaudeStatus,
   inspectTranscript,
@@ -105,6 +106,38 @@ export default function App() {
       })
       .catch(() => {
         // Probe failed — stay quiet; the generate-time handling still covers it.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  // Startup check: surface a persistent "update available" toast with a download
+  // link when a newer release is published. The backend checker fails silently, so
+  // this never throws and shows nothing when up to date.
+  useEffect(() => {
+    let cancelled = false
+    checkForUpdate()
+      .then((info) => {
+        if (cancelled || !info.update_available) return
+        const candidate = info.download_url ?? info.html_url
+        // Defense-in-depth: only ever open an https URL. The link comes from the
+        // GitHub API via our backend (which already https-filters it), but never
+        // trust it enough to hand a javascript:/data: URI to window.open.
+        const url = candidate && /^https:\/\//i.test(candidate) ? candidate : null
+        toast(`Update available — ${info.latest}`, {
+          description: "A newer version of Meeting Minutes is ready to download.",
+          duration: Infinity,
+          action: url
+            ? {
+                label: "Download",
+                onClick: () => window.open(url, "_blank", "noopener,noreferrer"),
+              }
+            : undefined,
+        })
+      })
+      .catch(() => {
+        // Update check failed — stay quiet.
       })
     return () => {
       cancelled = true

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest"
 import {
   buildDocxFormData,
   buildMinutesFormData,
+  checkForUpdate,
   exportMinutesDocx,
   generateMinutes,
   type MinutesOptions,
@@ -117,5 +118,53 @@ describe("exportMinutesDocx", () => {
       ),
     )
     await expect(exportMinutesDocx("## Topic")).rejects.toThrow("unrenderable")
+  })
+})
+
+describe("checkForUpdate", () => {
+  afterEach(() => vi.restoreAllMocks())
+
+  it("returns the update info when a newer release exists", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            current: "1.0.3",
+            latest: "v1.0.4",
+            update_available: true,
+            html_url: "https://github.com/Hus-Mek/meeting-minutes/releases/tag/v1.0.4",
+            download_url:
+              "https://github.com/Hus-Mek/meeting-minutes/releases/download/v1.0.4/MeetingMinutes-Setup.exe",
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+    const info = await checkForUpdate()
+    expect(info.update_available).toBe(true)
+    expect(info.latest).toBe("v1.0.4")
+    expect(info.download_url).toContain("MeetingMinutes-Setup.exe")
+  })
+
+  it("reports no update when up to date", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        new Response(
+          JSON.stringify({
+            current: "1.0.4",
+            latest: null,
+            update_available: false,
+            html_url: null,
+            download_url: null,
+          }),
+          { status: 200 },
+        ),
+      ),
+    )
+    const info = await checkForUpdate()
+    expect(info.update_available).toBe(false)
+    expect(info.latest).toBeNull()
   })
 })

@@ -139,3 +139,18 @@ export interface ClaudeStatus {
 export async function getClaudeStatus(): Promise<ClaudeStatus> {
   return unwrap<ClaudeStatus>(await fetch("/api/claude/status"))
 }
+
+export interface UpdateInfo {
+  current: string
+  latest: string | null
+  update_available: boolean
+  html_url: string | null
+  download_url: string | null
+}
+
+/** Startup probe: whether a newer release is published on GitHub. The backend
+ *  checker fails silently, so this resolves to `update_available: false` on any
+ *  network error rather than throwing. */
+export async function checkForUpdate(): Promise<UpdateInfo> {
+  return unwrap<UpdateInfo>(await fetch("/api/update/check"))
+}

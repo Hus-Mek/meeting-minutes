@@ -311,6 +311,20 @@ async def claude_status() -> dict[str, object]:
     return {"available": available, "path": path}
 
 
+@app.get("/api/update/check")
+async def update_check() -> dict[str, object]:
+    """Report whether a newer release is published on GitHub (public repo).
+
+    Backs the startup update banner. Fails SILENTLY in the checker itself, so this
+    always returns 200 with ``update_available=False`` on any network/parse error —
+    a transient GitHub hiccup must never surface as an app error.
+    """
+    from .update import check_for_update
+
+    info = await run_in_threadpool(check_for_update)
+    return info.as_dict()
+
+
 @app.post("/api/claude/login")
 async def claude_login() -> dict[str, str]:
     """Open an interactive Claude Code session for the one-time browser login.
