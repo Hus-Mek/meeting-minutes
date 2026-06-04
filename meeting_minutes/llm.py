@@ -534,6 +534,11 @@ class ClaudeCodeClient:
                     input=prompt_text,
                     capture_output=True,
                     text=True,
+                    # Force UTF-8 so Arabic prompts/output aren't mangled by Windows'
+                    # default cp1252 ('charmap') encoding on the child's stdin/stdout
+                    # (otherwise an Arabic prompt raises 'charmap codec can't encode').
+                    encoding="utf-8",
+                    errors="replace",
                     timeout=self._timeout,
                     cwd=workdir,
                     # On Windows, suppress the console window that would otherwise flash
