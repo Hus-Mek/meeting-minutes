@@ -19,6 +19,13 @@ jobs:
   build:
     runs-on: windows-latest
 
+    # Map the (optional) code-signing secrets to env so the signing steps can be
+    # gated on `env.WINDOWS_PFX_BASE64 != ''`. When the secrets are unset the
+    # signing steps are skipped and the build still produces an (unsigned) installer.
+    env:
+      WINDOWS_PFX_BASE64: ${{ secrets.WINDOWS_PFX_BASE64 }}
+      WINDOWS_PFX_PASSWORD: ${{ secrets.WINDOWS_PFX_PASSWORD }}
+
     steps:
       # 1. Get the source.
       - name: Checkout
@@ -84,6 +91,13 @@ jobs:
       - name: Freeze with PyInstaller
         run: pyinstaller --noconfirm --clean packaging/meeting_minutes.spec
 
+      # 7b. Sign the app EXE BEFORE the installer is built, so the installer ships a
+      #     signed binary. Gated: runs only when the WINDOWS_PFX_* secrets are set.
+      - name: Sign app executable
+        if: env.WINDOWS_PFX_BASE64 != ''
+        shell: pwsh
+        run: pwsh packaging/sign_windows.ps1 -Path "dist/MeetingMinutes/MeetingMinutes.exe"
+
       # 8. Install Inno Setup 6 (provides ISCC.exe) via Chocolatey.
       - name: Install Inno Setup
         run: choco install innosetup --no-progress -y
@@ -93,6 +107,12 @@ jobs:
       #    call operator (&) and a quoted path.
       - name: Build installer
         run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging/installer.iss'
+
+      # 9b. Sign the finished installer. Gated on the WINDOWS_PFX_* secrets.
+      - name: Sign installer
+        if: env.WINDOWS_PFX_BASE64 != ''
+        shell: pwsh
+        run: pwsh packaging/sign_windows.ps1 -Path "dist/installer/MeetingMinutes-Setup.exe"
 
       # 10. Always upload the installer as a workflow artifact.
       - name: Upload installer artifact
