@@ -91,6 +91,22 @@ jobs:
       - name: Freeze with PyInstaller
         run: pyinstaller --noconfirm --clean packaging/meeting_minutes.spec
 
+      # 7a. Verify the bundled Claude Code CLI landed where installer.iss expects it.
+      #     PyInstaller ONEDIR puts `datas` under the _internal\ contents dir, and
+      #     installer.iss's Approach B Exclude/Source paths depend on that exact
+      #     location. Fail loudly (printing the real tree) if the layout ever changes,
+      #     so the conditional install can't silently break.
+      - name: Verify bundled layout
+        shell: pwsh
+        run: |
+          $claude = "dist/MeetingMinutes/_internal/vendor/node/claude.cmd"
+          if (-not (Test-Path $claude)) {
+            $tree = Get-ChildItem -Recurse -Depth 3 dist/MeetingMinutes |
+                    Select-Object -ExpandProperty FullName | Out-String
+            throw "Expected bundled CLI at $claude (installer.iss Approach B assumes the _internal\ ONEDIR layout). Tree:`n$tree"
+          }
+          Write-Host "OK: bundled Claude Code CLI at $claude"
+
       # 7b. Sign the app EXE BEFORE the installer is built, so the installer ships a
       #     signed binary. Gated: runs only when the WINDOWS_PFX_* secrets are set.
       - name: Sign app executable
