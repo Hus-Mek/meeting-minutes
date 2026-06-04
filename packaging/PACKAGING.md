@@ -30,9 +30,12 @@ The end-user flow:
 There is **no API key** to enter and **no configuration** to ship. The installer
 **bundles Node.js + the Claude Code CLI**, and the launcher prefers a `claude` the
 machine already has (e.g. from the Claude desktop app or an npm install), falling
-back to the bundled copy. The only one-time step left for the user is to **log in
-to Claude** (tray icon → *Log in to Claude*) using their own subscription —
-nothing metered or secret is bundled. **Cowork** remains a zero-setup fallback.
+back to the bundled copy. To avoid leaving a redundant second Claude Code install,
+the installer **skips laying down the bundled CLI when the PC already has one**
+(Approach B — see [§7](#7-bundled-claude-code-cli-approach-b)); portable Node.js is
+always installed. The only one-time step left for the user is to **log in to Claude**
+(tray icon → *Log in to Claude*) using their own subscription — nothing metered or
+secret is bundled. **Cowork** remains a zero-setup fallback.
 
 ---
 
@@ -62,9 +65,11 @@ Three layers turn the web app into a desktop app:
    ONEFILE) is used for faster startup and friendlier antivirus behavior.
 
 3. **Installer — Inno Setup 6.**
-   `packaging/installer.iss` packages the entire `dist/MeetingMinutes/` tree
-   into the single per-user `MeetingMinutes-Setup.exe`, with Start Menu and
-   optional Desktop shortcuts and an uninstaller.
+   `packaging/installer.iss` packages the `dist/MeetingMinutes/` tree into the
+   single per-user `MeetingMinutes-Setup.exe`, with Start Menu and optional Desktop
+   shortcuts and an uninstaller. Its `[Code]` section detects an existing `claude`
+   and **conditionally skips the bundled CLI files** (Approach B —
+   [§7](#7-bundled-claude-code-cli-approach-b)).
 
 4. **Bundled runtime — portable Node.js + Claude Code CLI.**
    CI (and `build_windows.ps1`) download a portable Node.js and run
@@ -85,9 +90,12 @@ Three layers turn the web app into a desktop app:
 | `requirements-desktop.txt` | Desktop runtime deps layered on the server deps: `-r requirements.txt` plus `pystray` (tray icon + Quit) and `Pillow` (generates the in-memory tray image). PyInstaller is **not** here — it's a build-only tool installed by CI / the build script. |
 | `packaging/make_icon.py` | Generates `packaging/app.ico` (brand teal `#00ABAF` badge + document glyph) entirely in code with Pillow — no committed binary icon. Consumed by both the spec (embedded in the EXE) and the installer (`SetupIconFile`). |
 | `packaging/meeting_minutes.spec` | PyInstaller ONEDIR spec → `dist/MeetingMinutes/` (`MeetingMinutes.exe` + `_internal/`). Bundles `frontend/dist` → `frontend/dist` (bundle root, so `web.py`'s `parent.parent/frontend/dist` resolves), the prebuilt `sample_arabic_minutes.docx` → `meeting_minutes/templates`, and (when present) `vendor/node` → `vendor/node` (portable Node.js + the Claude Code CLI). UPX disabled (trips AV); `console=False`. |
-| `packaging/installer.iss` | Inno Setup 6 script. Per-user install (`PrivilegesRequired=lowest`, no admin/UAC), x64, Start Menu + optional Desktop shortcuts, fixed `AppId` GUID for clean upgrades. Outputs `../dist/installer/MeetingMinutes-Setup.exe`. |
+| `packaging/installer.iss` | Inno Setup 6 script. Per-user install (`PrivilegesRequired=lowest`, no admin/UAC), x64, Start Menu + optional Desktop shortcuts, fixed `AppId` GUID for clean upgrades. Its `[Code]` `ShouldInstallBundledClaude` check skips the bundled CLI when the PC already has `claude` (Approach B). Outputs `../dist/installer/MeetingMinutes-Setup.exe`. |
+| `packaging/sign_windows.ps1` | Authenticode-signs a binary (the EXE or the installer) with SHA-256 + an RFC 3161 timestamp, using a base64 PFX from `WINDOWS_PFX_BASE64` / `WINDOWS_PFX_PASSWORD`. A **no-op when no cert is configured**, so unsigned builds still succeed. Invoked twice by CI (see [§8](#8-code-signing-self-signed-internal-fleet)). |
+| `packaging/make_selfsigned_cert.ps1` | One-time helper (run on Windows) to create a self-signed code-signing cert and export the `.pfx` (for the GitHub secret) + `.cer` (to deploy to the fleet's Trusted Publishers/Root). Prints the base64 for `WINDOWS_PFX_BASE64`. |
+| `meeting_minutes/update.py` | Update checker: compares `meeting_minutes.__version__` against the latest GitHub release and reports a download link. Backs `GET /api/update/check` and the startup "update available" toast. Fails silently on any network error. |
 | `packaging/build_windows.ps1` | One-shot **local** Windows build: frontend → isolated `.buildvenv` → install deps + PyInstaller → prebuild `.docx` template → `make_icon.py` → PyInstaller freeze → ISCC. Resolves the repo root itself, so cwd doesn't matter. |
-| `.github/workflows/build-windows.yml` | **CI** build on `windows-latest`: same steps as the local script; installs Inno Setup via Chocolatey and invokes ISCC at `C:\Program Files (x86)\Inno Setup 6\ISCC.exe`. Uploads the installer as an artifact (and attaches it to a GitHub Release on tag pushes). |
+| `.github/workflows/build-windows.yml` | **CI** build on `windows-latest`: same steps as the local script; installs Inno Setup via Chocolatey and invokes ISCC at `C:\Program Files (x86)\Inno Setup 6\ISCC.exe`. Optionally signs the EXE + installer when `WINDOWS_PFX_*` secrets are set. Uploads the installer as an artifact (and attaches it to a GitHub Release on tag pushes). |
 
 Build-time artifacts (not committed): `packaging/app.ico`, `frontend/dist/`,
 `meeting_minutes/templates/sample_arabic_minutes.docx`, `vendor/` (portable
@@ -165,6 +173,89 @@ exactly as it does in development.
 - **Closing the browser tab does not quit the app.** The server keeps running in
   the background behind the tray icon. To fully stop it, right-click the tray
   icon and choose **Quit**.
+
+---
+
+## 7. Bundled Claude Code CLI (Approach B)
+
+The installer ships portable **Node.js + the Claude Code CLI** so a fresh PC needs
+only a one-time login. To avoid leaving a **redundant second Claude Code install**
+on machines that already have one, `installer.iss` splits the file copy:
+
+- **Node.js and everything else** is always installed.
+- The **bundled CLI files** — the `claude.*` shims and the
+  `…\node_modules\@anthropic-ai\…` package — are installed **only when no existing
+  `claude` is detected**, via the `[Code]` function `ShouldInstallBundledClaude`.
+
+> **Path note:** this is a PyInstaller **ONEDIR** build, so the bundled tree lives
+> under the `_internal\` contents dir — the real path is
+> `…\_internal\vendor\node\…`. The `installer.iss` `Excludes`/`Source` entries
+> include that `_internal\` prefix; without it the Exclude would silently match
+> nothing and the CLI would ship unconditionally.
+
+Detection mirrors the resolution order in `meeting_minutes/llm.py`
+(`ClaudeCodeClient._FALLBACK_PATHS`): `where claude` on the user's **PATH** first
+(e.g. the npm global shim dir `%APPDATA%\npm`), then the known per-user install
+locations (`%APPDATA%\npm`, `%LOCALAPPDATA%\Programs\claude`, `~\.local\bin`). The
+result is cached because Inno calls a `Check` function once per matched file.
+
+This is **fully offline** — the installer always contains the CLI; it just doesn't
+*lay it down* when one is already present (the launcher uses the existing one at
+runtime regardless). Trade-offs:
+
+- A few flattened npm dependency folders may remain under `vendor\node\node_modules`
+  when skipping — harmless dead weight, not a usable `claude` (no shim, no package).
+- If an existing `claude` is broken, the bundle is still skipped; the user falls back
+  to **Log in to Claude** / **Cowork**. This matches "prefer the existing install".
+
+---
+
+## 8. Code signing (self-signed, internal fleet)
+
+Signing is **optional** and gated on two GitHub secrets. With them unset the build
+still produces a working (unsigned) installer; with them set, CI signs both the app
+EXE (before the installer is built) and the finished installer.
+
+**Set it up once:**
+
+1. On a Windows PC, generate a self-signed code-signing cert:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File packaging\make_selfsigned_cert.ps1 -Password 'a-strong-passphrase'
+   ```
+   This writes `meetingminutes-codesign.pfx` + `.cer` and prints the `.pfx` base64.
+2. In the GitHub repo → **Settings → Secrets and variables → Actions**, add:
+   - `WINDOWS_PFX_BASE64` — the printed base64 of the `.pfx`.
+   - `WINDOWS_PFX_PASSWORD` — the passphrase from step 1.
+3. Deploy the **`.cer`** to the fleet so those PCs trust the signature. Via Group
+   Policy, import it into **Trusted Publishers** *and* **Trusted Root Certification
+   Authorities** (Computer Configuration → Windows Settings → Security Settings →
+   Public Key Policies). Only machines that trust the `.cer` get the SmartScreen /
+   "Unknown publisher" suppression.
+
+> **Self-signed ≠ external trust.** This suppresses warnings only on machines that
+> trust your `.cer`. For distribution to the public, use an **EV/OV code-signing
+> certificate** from a public CA (or Azure Trusted Signing) — then only the two
+> secrets change; the workflow is the same.
+
+The signing itself uses `Set-AuthenticodeSignature` (SHA-256 + an RFC 3161
+timestamp, so signatures survive cert expiry) via `packaging/sign_windows.ps1`.
+
+---
+
+## 9. Versioning & the update checker
+
+`meeting_minutes/__init__.py` `__version__` is the single source of truth for the
+app version and **must be bumped in lockstep with `installer.iss`'s `AppVersion`**
+for each release. `meeting_minutes/update.py` compares `__version__` against the
+latest GitHub release (`GET /api/update/check`); when a newer one exists the SPA
+shows a persistent "update available" toast with a **Download** link to the
+installer asset. The repo is public, so the check needs no token (an optional
+`MM_UPDATE_TOKEN` / `GITHUB_TOKEN` only lifts the anonymous rate limit).
+
+**Release checklist:** bump `__version__` + `AppVersion` together → run tests
+(`pytest`, `vitest`) and a build → commit → `git tag vX.Y.Z && git push origin
+vX.Y.Z` → the `build-windows` workflow builds, (optionally) signs, and attaches the
+installer to the matching Release.
 
 ---
 
