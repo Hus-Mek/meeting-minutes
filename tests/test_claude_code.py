@@ -127,7 +127,7 @@ class TestClaudeCodeClient:
         # headless print mode, text output, prompt piped via stdin (not argv)
         assert cmd[1] == "-p"
         assert "--output-format" in cmd and "text" in cmd
-        assert "--model" not in cmd  # empty model => CC default
+        assert "--model" in cmd and "opus" in cmd  # empty model => Opus tier (not CC default)
         # lean invocation: no MCP servers, no user hooks/rules
         assert "--strict-mcp-config" in cmd
         assert "--setting-sources" in cmd and "project,local" in cmd
@@ -147,13 +147,98 @@ class TestClaudeCodeClient:
         assert "SYS contract" in captured["input"] and "USER transcript" in captured["input"]
         assert captured["cwd"] is not None  # isolated temp cwd, no project CLAUDE.md
 
-    def test_generate_passes_model_when_set(self, monkeypatch):
+    def test_generate_defaults_to_opus_tier(self, monkeypatch):
         _patch_which(monkeypatch)
         run = _make_run(gen_stdout="ok")
         monkeypatch.setattr(subprocess, "run", run)
-        ClaudeCodeClient().generate("s", "u", model="opus")
+        ClaudeCodeClient().generate("s", "u", model="")  # no preference
         cmd = run.gen_calls[-1]
-        assert "--model" in cmd and "opus" in cmd
+        assert "--model" in cmd and "opus" in cmd and "sonnet" not in cmd
+
+    def test_explicit_sonnet_request_uses_sonnet(self, monkeypatch):
+        _patch_which(monkeypatch)
+        run = _make_run(gen_stdout="ok")
+        monkeypatch.setattr(subprocess, "run", run)
+        ClaudeCodeClient().generate("s", "u", model="claude-sonnet-4-6")
+        cmd = run.gen_calls[-1]
+        assert "--model" in cmd and "sonnet" in cmd  # honoured, still within Opus/Sonnet
+
+    def test_non_opus_non_sonnet_request_is_forced_to_opus(self, monkeypatch):
+        """'nothing else': a Haiku/Groq/garbage model id collapses onto the Opus tier."""
+        _patch_which(monkeypatch)
+        for bad_model in ("haiku", "llama-3.3-70b-versatile", "gpt-4o"):
+            run = _make_run(gen_stdout="ok")
+            monkeypatch.setattr(subprocess, "run", run)
+            ClaudeCodeClient().generate("s", "u", model=bad_model)
+            cmd = run.gen_calls[-1]
+            assert "opus" in cmd and "haiku" not in cmd and bad_model not in cmd
+
+    def test_falls_back_to_sonnet_when_opus_unavailable(self, monkeypatch):
+        """Opus not on the account's plan → retry with Sonnet, never anything else."""
+        _patch_which(monkeypatch)
+
+        def run(cmd, input=None, **kwargs):
+            run.calls.append(cmd)
+            if "--help" in cmd:
+                return _Proc(stdout=_FAKE_HELP)
+            run.gen_calls.append(cmd)
+            if "opus" in cmd:
+                return _Proc(
+                    stderr="There's an issue with the selected model (opus). "
+                    "It may not exist or you may not have access to it.",
+                    returncode=1,
+                )
+            return _Proc(stdout="via sonnet")
+
+        run.calls, run.gen_calls = [], []
+        monkeypatch.setattr(subprocess, "run", run)
+
+        out = ClaudeCodeClient().generate("s", "u")
+        assert out == "via sonnet"
+        assert len(run.gen_calls) == 2  # opus rejected, sonnet succeeded
+        assert "sonnet" in run.gen_calls[-1] and "opus" not in run.gen_calls[-1]
+
+    def test_generic_access_error_does_not_trigger_tier_switch(self, monkeypatch):
+        """A non-model 'no access' error (auth/MCP/org) must surface, NOT be mistaken
+        for an Opus-unavailable error and waste a Sonnet retry."""
+        _patch_which(monkeypatch)
+        run = _make_run(
+            gen_stderr="You may not have access to this MCP server. Please log in.",
+            gen_returncode=1,
+        )
+        monkeypatch.setattr(subprocess, "run", run)
+        with pytest.raises(RuntimeError, match="MCP server"):
+            ClaudeCodeClient().generate("s", "u")
+        assert len(run.gen_calls) == 1  # no spurious tier switch
+
+    def test_unstrippable_unknown_option_raises_immediately(self, monkeypatch):
+        """An 'unknown option' for a flag we didn't inject (not in optional, not
+        --model) must raise at once — never fall through to the model-tier check,
+        even if the same stderr also contains model-availability wording."""
+        _patch_which(monkeypatch)
+        run = _make_run(
+            gen_stderr="error: unknown option '--frobnicate'; you may not have access to it",
+            gen_returncode=1,
+        )
+        monkeypatch.setattr(subprocess, "run", run)
+        with pytest.raises(RuntimeError, match="frobnicate"):
+            ClaudeCodeClient().generate("s", "u")
+        assert len(run.gen_calls) == 1  # no tier switch, no loop
+
+    def test_both_tiers_unavailable_raises(self, monkeypatch):
+        """If neither Opus nor Sonnet is available, surface an error — try nothing else."""
+        _patch_which(monkeypatch)
+        run = _make_run(
+            gen_stderr="issue with the selected model. you may not have access to it.",
+            gen_returncode=1,
+        )
+        monkeypatch.setattr(subprocess, "run", run)
+        with pytest.raises(RuntimeError, match="selected model|exit 1"):
+            ClaudeCodeClient().generate("s", "u")
+        # tried exactly the two allowed tiers, then gave up — no third attempt
+        assert len(run.gen_calls) == 2
+        tiers = {("opus" in c, "sonnet" in c) for c in run.gen_calls}
+        assert (True, False) in tiers and (False, True) in tiers
 
     def test_nonzero_exit_raises_with_stderr(self, monkeypatch):
         _patch_which(monkeypatch)
@@ -348,4 +433,4 @@ class TestClaudeCodeClient:
         from meeting_minutes.llm import get_client
 
         assert isinstance(get_client("claude-code"), ClaudeCodeClient)
-        assert L.default_model_for("claude-code") == ""
+        assert L.default_model_for("claude-code") == "opus"  # Opus tier, not CC's default

@@ -36,6 +36,13 @@ MODEL_CONTEXT_WINDOWS = {
     "llama-3.1-8b-instant": 128_000,
     "anthropic/claude-sonnet-4.6": 200_000,
     "anthropic/claude-sonnet-4.5": 200_000,
+    # Claude Code tier aliases (Opus preferred, Sonnet fallback — see
+    # ClaudeCodeClient) and the current 4.x ids. Opus/Sonnet 4.x are 200k-context, so
+    # the budget is the same whichever tier the CLI ends up running.
+    "opus": 200_000,
+    "sonnet": 200_000,
+    "claude-opus-4-8": 200_000,
+    "claude-sonnet-4-6": 200_000,
     # Local Ollama models (key = the Ollama tag; value = shipped num_ctx).
     "iKhalid/ALLaM:7b": 4_096,
     "yehia7b": 4_096,
@@ -73,7 +80,10 @@ DEFAULT_MODELS = {
     "groq": DEFAULT_GROQ_MODEL,
     "openrouter": DEFAULT_OPENROUTER_MODEL,
     "anthropic": "claude-opus-4-8",
-    "claude-code": "",  # empty => use whatever model Claude Code is configured with
+    # Claude Code runs only an Opus or Sonnet model — nothing else. "opus" is the
+    # preferred tier; ClaudeCodeClient falls back to "sonnet" if the account lacks
+    # Opus access. (CLI tier aliases auto-resolve to the latest model in each tier.)
+    "claude-code": "opus",
     "ollama": DEFAULT_LOCAL_MODEL,
     "lmstudio": DEFAULT_LOCAL_MODEL,
 }
@@ -453,8 +463,10 @@ class ClaudeCodeClient:
     Subscription-backed: it uses your Claude Code login, so it's **automatic, $0
     incremental, and never touches a metered API or OpenRouter**. Requires the
     ``claude`` CLI installed and logged in (``npm i -g @anthropic-ai/claude-code``).
-    The model is whatever Claude Code is configured to use unless ``model`` overrides
-    it. The prompt is piped via stdin so long transcripts don't hit ARG_MAX.
+    The model is always an Opus model, falling back to a Sonnet model when the account
+    lacks Opus access — nothing else (an explicit ``model`` only chooses which of those
+    two tiers to try first). The prompt is piped via stdin so long transcripts don't
+    hit ARG_MAX.
     """
 
     # ---- CLI-version robustness (keyed by resolved binary path) -----------------
@@ -476,6 +488,23 @@ class ClaudeCodeClient:
     # backstop, so it must recognise every "unknown option" wording an old CLI emits.
     _UNKNOWN_OPT_RE = re.compile(
         r"""unknown option[:\s]*['"`]?(--[A-Za-z0-9][A-Za-z0-9-]*)""",
+        re.IGNORECASE,
+    )
+
+    # ---- Model policy: an Opus model, else a Sonnet model, nothing else ----------
+    # CLI tier aliases — they auto-resolve to the latest model in each tier on the
+    # user's plan, so we never have to pin (or chase) a specific 4.x id.
+    _OPUS = "opus"
+    _SONNET = "sonnet"
+    # The CLI's "model not on your plan" wording, e.g. "There's an issue with the
+    # selected model (X). It may not exist or you may not have access to it." Used to
+    # fall Opus → Sonnet when the account can't run the preferred tier. Anchored on
+    # model-specific phrasing so a generic auth/MCP/org "no access" error does NOT
+    # masquerade as a model problem and trigger a wrong tier switch.
+    _MODEL_UNAVAILABLE_RE = re.compile(
+        r"selected model"  # CLI's exact phrasing
+        r"|may not have access to it"  # its trailing, model-specific clause
+        r"|model[\s\S]{0,40}?(?:not (?:exist|found|available)|no access)",
         re.IGNORECASE,
     )
 
@@ -595,6 +624,19 @@ class ClaudeCodeClient:
             is not None
         )
 
+    @classmethod
+    def _model_attempts(cls, model: str) -> list[str]:
+        """The Opus→Sonnet attempt order for *model*.
+
+        Claude Code may run only an Opus or a Sonnet model — nothing else — so any
+        request collapses onto a tier: an explicit Sonnet ask is tried first (then
+        Opus); everything else (Opus, an empty/``default`` value, or an unrelated id
+        like a Groq/Haiku name) prefers Opus and falls back to Sonnet.
+        """
+        if "sonnet" in (model or "").lower():
+            return [cls._SONNET, cls._OPUS]
+        return [cls._OPUS, cls._SONNET]
+
     def generate(self, system: str, user: str, *, model: str = "") -> str:
         import subprocess
         import tempfile
@@ -621,14 +663,22 @@ class ClaudeCodeClient:
             ["--mcp-config", '{"mcpServers":{}}'],
             ["--setting-sources", "project,local"],
         ]
-        if model and model not in ("", "default", "claude-code"):
-            optional.append(["--model", model])
         optional = [frag for frag in optional if self._supports(frag[0])]
+
+        # Model policy: an Opus model, else a Sonnet model, nothing else. Always pass
+        # an explicit tier (so we never inherit whatever the CLI happens to default
+        # to), trying Opus first and falling back to Sonnet if the account can't run
+        # it. `use_model` only drops to False on a CLI so old it lacks --model.
+        attempts = self._model_attempts(model)
+        model_idx = 0
+        use_model = self._supports("--model")
 
         while True:
             cmd = list(base)
             for frag in optional:
                 cmd += frag
+            if use_model:
+                cmd += ["--model", attempts[model_idx]]
             try:
                 with tempfile.TemporaryDirectory() as workdir:
                     proc = subprocess.run(
@@ -656,24 +706,47 @@ class ClaudeCodeClient:
                 ) from exc
             if proc.returncode == 0:
                 break
+            stderr = proc.stderr or ""
             detail = (proc.stderr or proc.stdout or "").strip()
-            # An older CLI rejected one of our optional flags? Remember it (so future
-            # calls skip it), strip that fragment, and retry the slimmer command. Scan
-            # only stderr — commander writes its diagnostics there, so a transcript or
-            # model reply that happens to echo "unknown option …" in stdout can't
-            # trigger a spurious strip.
-            match = self._UNKNOWN_OPT_RE.search(proc.stderr or "")
-            rejected = match.group(1) if match else None
-            idx = next(
-                (i for i, frag in enumerate(optional) if frag[0] == rejected), None
-            )
-            if idx is None:
-                # Not a strippable-flag problem (e.g. not logged in) → surface as-is.
+            # (1) An older CLI rejected a flag we passed? Scan only stderr — commander
+            # writes its diagnostics there, so a transcript or model reply that echoes
+            # "unknown option …" in stdout can't trigger a spurious strip.
+            rejected = self._UNKNOWN_OPT_RE.search(stderr)
+            if rejected:
+                name = rejected.group(1)
+                if name == "--model":
+                    # CLI too old to even know --model: drop tier enforcement and
+                    # retry (it uses its own default model — unavoidable on such a CLI).
+                    self._unsupported_flags.setdefault(self._path, set()).add("--model")
+                    use_model = False
+                    continue
+                idx = next(
+                    (i for i, frag in enumerate(optional) if frag[0] == name), None
+                )
+                if idx is not None:
+                    # Remember it (so future calls skip it) and retry the slimmer cmd.
+                    self._unsupported_flags.setdefault(self._path, set()).add(
+                        optional.pop(idx)[0]
+                    )
+                    continue
+                # An "unknown option" we didn't inject (a core flag, or something a
+                # future change added): can't strip it → surface, never fall through to
+                # the model-tier check (keeps unknown-option strictly terminal here).
                 raise RuntimeError(
                     f"Claude Code CLI failed (exit {proc.returncode}): {detail}"
                 )
-            self._unsupported_flags.setdefault(self._path, set()).add(
-                optional.pop(idx)[0]
+            # (2) Preferred tier not available on this account → fall to the next tier
+            # (Opus → Sonnet). Only when --model is in play and a tier remains.
+            if (
+                use_model
+                and model_idx + 1 < len(attempts)
+                and self._MODEL_UNAVAILABLE_RE.search(stderr)
+            ):
+                model_idx += 1
+                continue
+            # Anything else (not logged in, both tiers unavailable, …) → surface as-is.
+            raise RuntimeError(
+                f"Claude Code CLI failed (exit {proc.returncode}): {detail}"
             )
         out = proc.stdout.strip()
         if not out:
