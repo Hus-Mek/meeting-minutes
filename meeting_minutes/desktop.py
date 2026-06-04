@@ -106,7 +106,11 @@ def build_server(port: int, host: str = HOST):
     """
     import uvicorn
 
-    from .web import app
+    # Absolute (not relative) import on purpose: when frozen by PyInstaller this module
+    # runs as the top-level script (__main__) with no parent package, so `from .web import
+    # app` raises "attempted relative import with no parent package". The absolute form
+    # works both frozen and when run as `python -m meeting_minutes.desktop`.
+    from meeting_minutes.web import app
 
     class _ThreadedServer(uvicorn.Server):
         def install_signal_handlers(self) -> None:  # noqa: D401 — runs off the main thread
