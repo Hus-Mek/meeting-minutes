@@ -13,6 +13,8 @@ variables cannot silently tunnel traffic through OpenRouter.
 from __future__ import annotations
 
 import os
+import re
+import threading
 from typing import Callable, Protocol
 
 DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
@@ -455,6 +457,28 @@ class ClaudeCodeClient:
     it. The prompt is piped via stdin so long transcripts don't hit ARG_MAX.
     """
 
+    # ---- CLI-version robustness (keyed by resolved binary path) -----------------
+    # Older `claude` CLIs predate some flags we pass (e.g. --setting-sources,
+    # --strict-mcp-config). An unrecognised flag makes the CLI exit 1 with
+    # "unknown option '--…'", which previously broke generation outright on any
+    # machine whose installed claude was older than the bundled one. We defend two
+    # ways: (1) probe `claude --help` once and skip flags it doesn't advertise;
+    # (2) a runtime safety net that strips any flag the CLI still rejects and
+    # retries. Both results are cached per binary so we pay the cost at most once
+    # per process. (The cache key is the binary path; if the user upgrades the same
+    # claude in place mid-session it stays stale until restart — perf-only, and the
+    # retry net still keeps generation working.)
+    _help_cache: dict[str, str] = {}
+    _unsupported_flags: dict[str, set[str]] = {}
+    _cache_lock = threading.Lock()  # guards _help_cache populate-on-miss across threads
+    # commander.js emits e.g.  error: unknown option '--setting-sources'. Tolerate the
+    # quote dialects ' " ` , an optional ':' separator, and case — the retry net is our
+    # backstop, so it must recognise every "unknown option" wording an old CLI emits.
+    _UNKNOWN_OPT_RE = re.compile(
+        r"""unknown option[:\s]*['"`]?(--[A-Za-z0-9][A-Za-z0-9-]*)""",
+        re.IGNORECASE,
+    )
+
     # Common install locations, checked after PATH so it "just works" even when the
     # app is launched from a shell/process without the CLI on PATH. Not hardcoded
     # user paths — `~` expands per-user (to %USERPROFILE% on Windows), staying
@@ -473,8 +497,8 @@ class ClaudeCodeClient:
     )
 
     def __init__(self, *, binary: str | None = None, timeout: float = 600.0) -> None:
-        self._path = self._resolve_binary(binary)
-        if not self._path:
+        path = self._resolve_binary(binary)
+        if not path:
             # Plain-language guidance for non-technical users: the GUI detects this
             # error and shows an illustrated setup guide, but keep the full steps here
             # too as a fallback (and for CLI users). Lead with the no-setup option.
@@ -488,6 +512,7 @@ class ClaudeCodeClient:
                 "(3) run:  claude  and log in with your Claude account  (4) reopen Meeting Minutes.\n"
                 "(Advanced: set CLAUDE_CODE_BIN to the claude binary's path.)"
             )
+        self._path: str = path  # narrowed: non-None past the guard above
         self._timeout = timeout
 
     @classmethod
@@ -510,49 +535,146 @@ class ClaudeCodeClient:
                 return p
         return None
 
+    @classmethod
+    def _cli_help(cls, path: str) -> str:
+        """Return (cached) ``claude --help`` text for *path*, or ``""`` if unreadable.
+
+        Used to detect which optional flags the installed CLI version understands so
+        we never hand an older CLI a flag it would reject. Probed at most once per
+        binary per process — ``--help`` is a cheap, LLM-free call. Double-checked
+        locking keeps concurrent first-callers (FastAPI runs generation in a thread
+        pool) from each spawning their own probe.
+        """
+        cached = cls._help_cache.get(path)
+        if cached is not None:
+            return cached
+        with cls._cache_lock:
+            cached = cls._help_cache.get(path)
+            if cached is not None:  # another thread won the race while we waited
+                return cached
+            import subprocess
+
+            try:
+                proc = subprocess.run(
+                    [path, "--help"],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=15,
+                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                )
+                help_text = (proc.stdout or "") + (proc.stderr or "")
+            except Exception:
+                # Help unreadable → cache "" so _supports() trusts the flag and lets
+                # the runtime retry net strip it if the CLI truly rejects it (and we
+                # don't re-probe a binary whose --help keeps failing).
+                help_text = ""
+            cls._help_cache[path] = help_text
+            return help_text
+
+    def _supports(self, flag: str) -> bool:
+        """Whether the resolved CLI advertises *flag* (and hasn't rejected it before).
+
+        When ``--help`` could not be read we return ``True`` (don't pre-emptively drop
+        a flag we can't verify) and rely on the retry safety net in ``generate``.
+        """
+        if flag in self._unsupported_flags.get(self._path, frozenset()):
+            return False
+        help_text = self._cli_help(self._path)
+        if not help_text:
+            return True
+        # Count the flag as advertised only when it appears as an actual option entry:
+        # at the start of an indented help line (optionally after a short alias like
+        # "-p, "), not merely inside another option's description (the real
+        # --strict-mcp-config help text contains the prose "from --mcp-config") nor as
+        # a prefix of a longer flag (--model within --fallback-model). A bare substring
+        # test gives false positives that waste a failing CLI spawn before the retry.
+        return (
+            re.search(rf"(?m)^\s+(?:-\w, )?{re.escape(flag)}(?=$|[\s=\[<,])", help_text)
+            is not None
+        )
+
     def generate(self, system: str, user: str, *, model: str = "") -> str:
         import subprocess
         import tempfile
 
         prompt_text = f"{system}\n\n{user}" if system else user
-        # Lean invocation — this is plain text generation, not an agent task, so skip
-        # the heavy startup: no MCP servers, and no user-level hooks/rules (the
-        # SessionStart hook alone makes its own LLM call on every invocation). Running
-        # in an empty cwd avoids loading any project CLAUDE.md/hooks. Auth is
-        # unaffected — it lives in ~/.claude/.credentials.json, not in settings.
-        cmd = [
-            self._path, "-p", "--output-format", "text",
-            "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}',
-            "--setting-sources", "project,local",
+        # Core flags every supported CLI understands; required for headless text out.
+        base = [self._path, "-p", "--output-format", "text"]
+        # Optional hardening flags — each newer than the core set. Lean invocation:
+        # this is plain text generation, not an agent task, so skip the heavy startup:
+        # no MCP servers (--strict-mcp-config + empty --mcp-config), and no user-level
+        # hooks/rules (--setting-sources project,local — the SessionStart hook alone
+        # makes its own LLM call on every invocation). Running in an empty cwd avoids
+        # loading any project CLAUDE.md/hooks. Auth is unaffected — it lives in
+        # ~/.claude/.credentials.json, not in settings.
+        #
+        # Each flag is OPTIONAL by design: an older CLI that predates one just reverts
+        # to its default (heavier startup) and still generates correctly. We include a
+        # flag only if --help advertises it, and the retry loop below strips any the
+        # CLI rejects, so an unrecognised flag can never break generation. (A CLI old
+        # enough to lack these flags falls back to loading user-level hooks/MCP —
+        # generation still succeeds, just with the heavier startup these flags avoid.)
+        optional = [
+            ["--strict-mcp-config"],
+            ["--mcp-config", '{"mcpServers":{}}'],
+            ["--setting-sources", "project,local"],
         ]
         if model and model not in ("", "default", "claude-code"):
-            cmd += ["--model", model]
-        try:
-            with tempfile.TemporaryDirectory() as workdir:
-                proc = subprocess.run(
-                    cmd,
-                    input=prompt_text,
-                    capture_output=True,
-                    text=True,
-                    # Force UTF-8 so Arabic prompts/output aren't mangled by Windows'
-                    # default cp1252 ('charmap') encoding on the child's stdin/stdout
-                    # (otherwise an Arabic prompt raises 'charmap codec can't encode').
-                    encoding="utf-8",
-                    errors="replace",
-                    timeout=self._timeout,
-                    cwd=workdir,
-                    # On Windows, suppress the console window that would otherwise flash
-                    # for each CLI call when launched from a windowed (no-console) app.
-                    # getattr keeps this 0/inert on POSIX where the flag does not exist.
-                    creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
-                )
-        except subprocess.TimeoutExpired as exc:
-            raise RuntimeError(
-                f"Claude Code CLI timed out after {self._timeout:.0f}s"
-            ) from exc
-        if proc.returncode != 0:
+            optional.append(["--model", model])
+        optional = [frag for frag in optional if self._supports(frag[0])]
+
+        while True:
+            cmd = list(base)
+            for frag in optional:
+                cmd += frag
+            try:
+                with tempfile.TemporaryDirectory() as workdir:
+                    proc = subprocess.run(
+                        cmd,
+                        input=prompt_text,
+                        capture_output=True,
+                        text=True,
+                        # Force UTF-8 so Arabic prompts/output aren't mangled by
+                        # Windows' default cp1252 ('charmap') encoding on the child's
+                        # stdin/stdout (else an Arabic prompt raises 'charmap codec
+                        # can't encode').
+                        encoding="utf-8",
+                        errors="replace",
+                        timeout=self._timeout,
+                        cwd=workdir,
+                        # On Windows, suppress the console window that would otherwise
+                        # flash for each CLI call when launched from a windowed
+                        # (no-console) app. getattr keeps this 0/inert on POSIX where
+                        # the flag does not exist.
+                        creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+                    )
+            except subprocess.TimeoutExpired as exc:
+                raise RuntimeError(
+                    f"Claude Code CLI timed out after {self._timeout:.0f}s"
+                ) from exc
+            if proc.returncode == 0:
+                break
             detail = (proc.stderr or proc.stdout or "").strip()
-            raise RuntimeError(f"Claude Code CLI failed (exit {proc.returncode}): {detail}")
+            # An older CLI rejected one of our optional flags? Remember it (so future
+            # calls skip it), strip that fragment, and retry the slimmer command. Scan
+            # only stderr — commander writes its diagnostics there, so a transcript or
+            # model reply that happens to echo "unknown option …" in stdout can't
+            # trigger a spurious strip.
+            match = self._UNKNOWN_OPT_RE.search(proc.stderr or "")
+            rejected = match.group(1) if match else None
+            idx = next(
+                (i for i, frag in enumerate(optional) if frag[0] == rejected), None
+            )
+            if idx is None:
+                # Not a strippable-flag problem (e.g. not logged in) → surface as-is.
+                raise RuntimeError(
+                    f"Claude Code CLI failed (exit {proc.returncode}): {detail}"
+                )
+            self._unsupported_flags.setdefault(self._path, set()).add(
+                optional.pop(idx)[0]
+            )
         out = proc.stdout.strip()
         if not out:
             raise RuntimeError("Claude Code CLI returned empty output")
