@@ -755,14 +755,18 @@ class ClaudeCodeClient:
 
 
 def launch_claude_login(binary: str | None = None) -> None:
-    """Open an interactive Claude Code session so the user can complete the one-time
-    browser login.
+    """Open an interactive Claude Code session for one-time browser login.
 
     Resolves the CLI the same way ``ClaudeCodeClient`` does (explicit arg, then
     ``CLAUDE_CODE_BIN``, then PATH / known install locations — including the bundled
     copy the desktop launcher wires up). Shared by the tray "Log in to Claude" item
     and the in-app button so both behave identically. Raises ``RuntimeError`` when no
     ``claude`` can be found.
+
+    SECURITY NOTE: On Windows, uses ``subprocess.Popen`` with a list of arguments
+    (not shell=True) to avoid shell injection vulnerabilities. The claude binary path
+    is resolved via ``shutil.which`` or explicit path, which is inherently safer
+    than shell command interpolation.
     """
     import subprocess
     import sys
@@ -771,9 +775,14 @@ def launch_claude_login(binary: str | None = None) -> None:
     if not claude:
         raise RuntimeError("Claude Code was not found, so there is nothing to log in to.")
     if sys.platform == "win32":
-        # 'start "title" "program"' opens a visible console running claude
-        # interactively; it walks the user through logging in via the browser.
-        subprocess.Popen(f'start "Claude Code login" "{claude}"', shell=True)  # noqa: S602
+        # On Windows, launch the CLI with CREATE_NEW_CONSOLE so the user gets a
+        # visible console window for the interactive browser login flow. Using a list
+        # of arguments (no shell=True) avoids shell injection vulnerabilities.
+        # The path comes from shutil.which or explicit path, which is trusted.
+        proc = subprocess.Popen(
+            [claude],
+            creationflags=subprocess.CREATE_NEW_CONSOLE,  # type: ignore[attr-defined]
+        )
     else:
         subprocess.Popen([claude])  # noqa: S603
 

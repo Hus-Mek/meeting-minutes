@@ -93,12 +93,12 @@ class TestClaudeCodeClient:
             ClaudeCodeClient()
 
     def test_resolves_fallback_path_when_not_on_PATH(self, monkeypatch):
-        monkeypatch.delenv("CLAUDE_CODE_BIN", raising=False)
-        monkeypatch.setattr("shutil.which", lambda _name: None)  # not on PATH
-        home_claude = str(Path.home() / ".local/bin/claude")
-        monkeypatch.setattr("os.path.isfile", lambda p: p == home_claude)
-        monkeypatch.setattr("os.access", lambda p, _mode: p == home_claude)
-        assert ClaudeCodeClient()._path == home_claude
+            monkeypatch.delenv("CLAUDE_CODE_BIN", raising=False)
+            monkeypatch.setattr("shutil.which", lambda _name: None)  # not on PATH
+            home_claude = os.path.expanduser("~/.local/bin/claude")
+            monkeypatch.setattr("os.path.isfile", lambda p: p == home_claude)
+            monkeypatch.setattr("os.access", lambda p, _mode: p == home_claude)
+            assert ClaudeCodeClient()._path == home_claude
 
     def test_resolves_windows_npm_shim(self, monkeypatch):
         # Windows: claude installed as an npm .cmd shim, not on PATH.
