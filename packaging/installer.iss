@@ -12,7 +12,7 @@
 ; Build with:  ISCC.exe packaging\installer.iss   (run from the repo root)
 
 #define AppName "Meeting Minutes"
-#define AppVersion "1.0.6"
+#define AppVersion "1.0.7"
 #define AppPublisher "Hawaz"
 #define AppExe "MeetingMinutes.exe"
 
@@ -97,11 +97,16 @@ function KnownClaudeInstallExists(): Boolean;
 var
   UserProfile: String;
 begin
+  { Only count the Claude **Code CLI** install locations: npm global shims and the
+    native installer's ~\.local\bin. Deliberately NOT %LOCALAPPDATA%\Programs\claude:
+    that path is the Claude *desktop chat app* (an Electron GUI with no headless mode),
+    a separate product. Counting it made the installer skip the bundled CLI on machines
+    that only had the desktop app, after which the launcher invoked that GUI as a CLI
+    and generation failed. }
   UserProfile := GetEnv('USERPROFILE');
   Result :=
     FileExists(ExpandConstant('{userappdata}\npm\claude.cmd')) or
     FileExists(ExpandConstant('{userappdata}\npm\claude.exe')) or
-    FileExists(ExpandConstant('{localappdata}\Programs\claude\claude.exe')) or
     ((UserProfile <> '') and FileExists(UserProfile + '\.local\bin\claude.exe'));
 end;
 

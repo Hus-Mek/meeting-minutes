@@ -115,6 +115,67 @@ class TestClaudeCodeClient:
         monkeypatch.setattr("os.access", lambda p, _mode: True)
         assert ClaudeCodeClient()._path == "/custom/claude"
 
+    # ---- Desktop-app vs CLI disambiguation -------------------------------------
+    # The Claude *desktop chat app* installs a `claude.exe` too, but it is an Electron
+    # GUI with no headless mode. Auto-discovery must never pick it (doing so made
+    # generation hang/500 on machines that had the desktop app installed).
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            r"C:\Users\sara\AppData\Local\Programs\claude\claude.exe",  # NSIS default
+            "C:/Users/sara/AppData/Local/Programs/claude/claude.exe",  # forward slashes
+            r"C:\Users\sara\AppData\Local\AnthropicClaude\claude.exe",  # alt dir
+            r"C:\Users\sara\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\claude.exe",  # MSIX
+            "/Applications/Claude.app/Contents/MacOS/claude",  # macOS desktop bundle
+        ],
+    )
+    def test_is_desktop_app_recognises_desktop_installs(self, path):
+        assert L._is_desktop_app(path) is True
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            r"C:\Users\sara\AppData\Roaming\npm\claude.cmd",  # npm global shim
+            r"C:\Users\sara\.local\bin\claude.exe",  # native CLI installer
+            "/usr/local/bin/claude",
+            "/home/sara/.local/bin/claude",
+            "/opt/homebrew/bin/claude",
+        ],
+    )
+    def test_is_desktop_app_passes_real_cli_paths(self, path):
+        assert L._is_desktop_app(path) is False
+
+    def test_resolution_skips_desktop_app_on_path_and_uses_real_cli(self, monkeypatch):
+        """`claude` on PATH is the desktop app, but a real CLI exists in a known dir:
+        resolution must skip the desktop app and return the real CLI."""
+        monkeypatch.delenv("CLAUDE_CODE_BIN", raising=False)
+        desktop = r"C:\Users\sara\AppData\Local\Programs\claude\claude.exe"
+        monkeypatch.setattr("shutil.which", lambda _name: desktop)  # PATH → desktop app
+        real_cli = os.path.expanduser("~/AppData/Roaming/npm/claude.cmd")
+        monkeypatch.setattr("os.path.isfile", lambda p: p == real_cli)
+        monkeypatch.setattr("os.access", lambda p, _mode: p == real_cli)
+        assert ClaudeCodeClient()._path == real_cli
+
+    def test_resolution_returns_none_when_only_desktop_app_present(self, monkeypatch):
+        """Desktop app on PATH and no real CLI anywhere → treated as 'not found' so the
+        UI shows the setup guide instead of driving the GUI as a CLI (and 500-ing)."""
+        monkeypatch.delenv("CLAUDE_CODE_BIN", raising=False)
+        desktop = r"C:\Users\sara\AppData\Local\Programs\claude\claude.exe"
+        monkeypatch.setattr("shutil.which", lambda _name: desktop)
+        monkeypatch.setattr("os.path.isfile", lambda _p: False)  # no fallback CLI exists
+        with pytest.raises(RuntimeError, match="not found"):
+            ClaudeCodeClient()
+
+    def test_explicit_override_honoured_even_if_path_looks_like_desktop(self, monkeypatch):
+        """An explicit CLAUDE_CODE_BIN is the user's deliberate choice — honoured as-is
+        even if it sits in a desktop-app-looking dir (no auto-discovery filtering)."""
+        desktop = r"C:\Users\sara\AppData\Local\Programs\claude\claude.exe"
+        monkeypatch.setenv("CLAUDE_CODE_BIN", desktop)
+        monkeypatch.setattr("os.path.isfile", lambda p: p == desktop)
+        monkeypatch.setattr("os.access", lambda p, _mode: True)
+        assert ClaudeCodeClient()._path == desktop
+
     def test_generate_pipes_prompt_and_returns_stdout(self, monkeypatch):
         _patch_which(monkeypatch)
         run = _make_run(gen_stdout="## محضر اجتماع\nمحتوى")

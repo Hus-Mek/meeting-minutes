@@ -28,9 +28,11 @@ The end-user flow:
    way to fully stop the server — see [Limitations](#6-limitations)).
 
 There is **no API key** to enter and **no configuration** to ship. The installer
-**bundles Node.js + the Claude Code CLI**, and the launcher prefers a `claude` the
-machine already has (e.g. from the Claude desktop app or an npm install), falling
-back to the bundled copy. To avoid leaving a redundant second Claude Code install,
+**bundles Node.js + the Claude Code CLI**, and the launcher prefers a real Claude
+Code CLI the machine already has (an npm global or native `~\.local\bin` install),
+falling back to the bundled copy. The Claude *desktop chat app* does **not** count —
+it ships a same-named `claude.exe` but has no headless mode, so it is explicitly
+skipped (see `_is_desktop_app` in `llm.py`). To avoid a redundant second CLI install,
 the installer **skips laying down the bundled CLI when the PC already has one**
 (Approach B — see [§7](#7-bundled-claude-code-cli-approach-b)); portable Node.js is
 always installed. The only one-time step left for the user is to **log in to Claude**
@@ -195,9 +197,13 @@ on machines that already have one, `installer.iss` splits the file copy:
 
 Detection mirrors the resolution order in `meeting_minutes/llm.py`
 (`ClaudeCodeClient._FALLBACK_PATHS`): `where claude` on the user's **PATH** first
-(e.g. the npm global shim dir `%APPDATA%\npm`), then the known per-user install
-locations (`%APPDATA%\npm`, `%LOCALAPPDATA%\Programs\claude`, `~\.local\bin`). The
-result is cached because Inno calls a `Check` function once per matched file.
+(e.g. the npm global shim dir `%APPDATA%\npm`), then the known per-user **CLI**
+install locations (`%APPDATA%\npm`, `~\.local\bin`). It deliberately does **not**
+count `%LOCALAPPDATA%\Programs\claude` — that path is the Claude *desktop chat app*
+(a different product with no headless mode); counting it made the installer skip the
+bundled CLI on desktop-app-only machines, after which the launcher tried to drive the
+GUI as a CLI and generation failed. The result is cached because Inno calls a `Check`
+function once per matched file.
 
 This is **fully offline** — the installer always contains the CLI; it just doesn't
 *lay it down* when one is already present (the launcher uses the existing one at

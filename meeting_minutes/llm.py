@@ -457,6 +457,43 @@ class LocalOpenAIClient:
         raise RuntimeError(f"Local model request failed: {last_exc}")
 
 
+# Directories that hold the Claude **desktop chat app** (an Electron GUI), never the
+# Claude Code CLI. The desktop app's executable is *also* named ``claude(.exe)`` but it
+# has NO headless ``-p`` mode — invoking it for generation just launches its window and
+# hangs (or errors). If auto-discovery turns one up we must skip it and keep looking
+# for a real CLI; otherwise generation fails with a cryptic 500/timeout on any machine
+# that has the desktop app installed. (An explicit ``CLAUDE_CODE_BIN`` override is still
+# honoured verbatim — that is a deliberate user choice, not auto-discovery.)
+#
+# Markers are matched as substrings of the lower-cased, forward-slash-normalised path
+# (and its realpath, so a Windows MSIX execution-alias reparse point resolves back to
+# its package dir). Covers: the electron-builder NSIS default %LOCALAPPDATA%\Programs\
+# claude, the alt "AnthropicClaude" dir, the MSIX %LOCALAPPDATA%\Packages\Claude_<hash>
+# sandbox, and the macOS /Applications/Claude.app bundle. The Claude Code CLI itself
+# lives elsewhere (npm's %APPDATA%\npm, the native installer's ~\.local\bin), so none of
+# these markers can ever match a real CLI.
+_DESKTOP_APP_DIR_MARKERS = (
+    "/programs/claude/",
+    "/anthropicclaude/",
+    "/packages/claude_",
+    "/applications/claude.app/",
+)
+
+
+def _is_desktop_app(path: str) -> bool:
+    """Whether *path* points into a Claude **desktop app** install (not the CLI)."""
+    candidates = {path}
+    try:
+        candidates.add(os.path.realpath(path))
+    except OSError:
+        pass  # realpath can fail on odd/non-existent paths — match the raw path then
+    for candidate in candidates:
+        norm = candidate.replace("\\", "/").lower()
+        if any(marker in norm for marker in _DESKTOP_APP_DIR_MARKERS):
+            return True
+    return False
+
+
 class ClaudeCodeClient:
     """Generate via the local **Claude Code CLI** in headless print mode (``claude -p``).
 
@@ -518,11 +555,12 @@ class ClaudeCodeClient:
         "~/.claude/local/claude",
         "/usr/local/bin/claude",
         "/opt/homebrew/bin/claude",
-        # Windows — npm global shim (.cmd) + native installer (.exe)
+        # Windows — npm global shim (.cmd) + native installer (.exe). NOTE: deliberately
+        # NOT %LOCALAPPDATA%\Programs\claude\claude.exe — that is the Claude *desktop
+        # chat app*, a different product with no headless mode (see _is_desktop_app).
         "~/AppData/Roaming/npm/claude.cmd",
         "~/AppData/Roaming/npm/claude.exe",
         "~/.local/bin/claude.exe",
-        "~/AppData/Local/Programs/claude/claude.exe",
     )
 
     def __init__(self, *, binary: str | None = None, timeout: float = 600.0) -> None:
@@ -550,17 +588,20 @@ class ClaudeCodeClient:
         import shutil
 
         explicit = binary or os.environ.get("CLAUDE_CODE_BIN")
-        if explicit:  # may be a bare name or a full path
+        if explicit:  # may be a bare name or a full path — honoured verbatim (user choice)
             p = os.path.expanduser(explicit)
             if os.path.isfile(p) and os.access(p, os.X_OK):
                 return p
             return shutil.which(explicit)
+        # Auto-discovery: a `claude(.exe)` on PATH or in a known dir might actually be
+        # the Claude *desktop app* (same exe name, no headless mode). Skip those and
+        # keep looking for a real CLI rather than handing generation a GUI that hangs.
         found = shutil.which("claude")
-        if found:
+        if found and not _is_desktop_app(found):
             return found
         for candidate in cls._FALLBACK_PATHS:
             p = os.path.expanduser(candidate)
-            if os.path.isfile(p) and os.access(p, os.X_OK):
+            if os.path.isfile(p) and os.access(p, os.X_OK) and not _is_desktop_app(p):
                 return p
         return None
 

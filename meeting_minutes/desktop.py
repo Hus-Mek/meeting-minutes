@@ -101,16 +101,19 @@ def _ensure_claude_runtime() -> None:
     """Make a Claude Code CLI available, preferring one the user already has.
 
     Order:
-      1. If a ``claude`` is already resolvable (on PATH, or in a known install
-         location such as one the Claude desktop app / npm may provide), use it —
-         do not touch the environment.
+      1. If a real Claude Code **CLI** is already resolvable (on PATH or a known CLI
+         install location — npm global, ~/.local/bin), use it and don't touch the
+         environment. The Claude *desktop chat app* is deliberately NOT counted here:
+         ClaudeCodeClient._resolve_binary skips it because it is a separate GUI product
+         with no headless mode, so on a desktop-app-only machine we fall through to the
+         bundled CLI instead of trying to drive the GUI as a CLI.
       2. Otherwise fall back to the portable Node.js + CLI we bundle in the
          installer (``vendor/node``): prepend its dir to PATH so the ``claude.cmd``
          shim finds node, and point CLAUDE_CODE_BIN at it.
 
-    This means: installing the Claude GUI's CLI later is automatically used, and a
+    This means: installing a real Claude Code CLI later is automatically used, and a
     fresh PC with neither still works off the bundled copy. No-op in dev when
-    nothing is bundled and no claude is installed.
+    nothing is bundled and no CLI is installed.
     """
     try:
         from meeting_minutes.llm import ClaudeCodeClient
